@@ -1,13 +1,30 @@
-import {View, Text, Animated, Image, TouchableOpacity} from 'react-native'
-import React from 'react'
-import {SafeAreaView} from "react-native-safe-area-context";
-import ScrollView = Animated.ScrollView;
-import images from "@/constants/images";
 import icons from "@/constants/icons";
+import images from "@/constants/images";
+import { login } from "@/lib/appwrite";
+import { useGlobalContext } from "@/lib/global-provider";
+import { Redirect, useRouter } from "expo-router";
+import React from 'react';
+import { Alert, Animated, Image, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from "react-native-safe-area-context";
+import ScrollView = Animated.ScrollView;
 
 
 const SignIn = () => {
-    const handleLogin = async () => {}
+    const router = useRouter();
+    const { refetch, loading, isLogged } = useGlobalContext();
+
+    // Redirect whenever the user is logged in (no need to wait for loading)
+    if (isLogged) return <Redirect href="/" />;
+
+    const handleLogin = async () => {
+        const ok = await login();
+        if (ok) {
+            await refetch();
+            router.replace("/"); // ensure we land on tabs after callback
+        } else {
+            Alert.alert("Error", "Login failed");
+        }
+    }
     return (
         <SafeAreaView className="bg-white h-full">
             <ScrollView contentContainerClassName="h-full">
@@ -17,7 +34,7 @@ const SignIn = () => {
                         Welcome to Restate
                     </Text>
                     <Text className="text-3xl font-rubik text-black-300 text-center mt-2">
-                        Let's Get You Closer to {"\n"}
+                        Let&apos;s Get You Closer to {"\n"}
                         <Text className="text-primary-300">
                             Your Ideal Home
                         </Text>
