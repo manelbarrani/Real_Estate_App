@@ -1,8 +1,9 @@
-import {SplashScreen, Stack} from "expo-router";
-import "./global.css"
-import {useFonts} from "expo-font";
-import {useEffect} from "react";
 import GlobalProvider from "@/lib/global-provider";
+import { useFonts } from "expo-font";
+import { SplashScreen, Stack } from "expo-router";
+import { useEffect } from "react";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import "./global.css";
 
 export default function RootLayout() {
     const [fontsLoaded, setFontsLoaded] = useFonts({
@@ -23,9 +24,11 @@ export default function RootLayout() {
     if (!fontsLoaded) return null;
 
   return(
-      <GlobalProvider>
-          <Stack screenOptions={{headerShown: false}}/>
-      </GlobalProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+          <GlobalProvider>
+              <Stack screenOptions={{headerShown: false}}/>
+          </GlobalProvider>
+      </GestureHandlerRootView>
 
 
   );

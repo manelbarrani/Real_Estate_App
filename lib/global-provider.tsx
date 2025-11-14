@@ -39,9 +39,9 @@ export const GlobalProvider = ({ children }: GlobalProviderProps) => {
         <GlobalContext.Provider
             value={{
                 isLogged,
-                user: user ?? null, // ✅ ensures no undefined
+                user: user ?? null,
                 loading,
-                refetch: refetch as unknown as () => void, // ✅ fixes type mismatch
+                refetch: refetch as unknown as () => void,
 
             }}
         >

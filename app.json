@@ -17,7 +17,8 @@
         "foregroundImage": "./assets/images/icon.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.anonymous.RealEstate_app"
     },
     "web": {
       "output": "static",
@@ -37,20 +38,19 @@
           }
         }
       ],
-    [
-      "expo-font",
-      {
-        "fonts": [
-          "./assets/fonts/Rubik-Bold.ttf",
-          "./assets/fonts/Rubik-ExtraBold.ttf",
-          "./assets/fonts/Rubik-Medium.ttf",
-          "./assets/fonts/Rubik-Regular.ttf",
-          "./assets/fonts/Rubik-SemiBold.ttf"
-        ]
-      }
-    ]
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/Rubik-Bold.ttf",
+            "./assets/fonts/Rubik-ExtraBold.ttf",
+            "./assets/fonts/Rubik-Medium.ttf",
+            "./assets/fonts/Rubik-Regular.ttf",
+            "./assets/fonts/Rubik-SemiBold.ttf"
+          ]
+        }
+      ]
     ],
-
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
