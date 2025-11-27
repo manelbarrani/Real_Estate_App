@@ -1,14 +1,16 @@
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Dimensions,
-  FlatList,
-  Image,
-  Platform,
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    FlatList,
+    Image,
+    Platform,
+    ScrollView,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 import Comment from "@/components/Comment";
@@ -17,7 +19,7 @@ import { facilities } from "@/constants/data";
 import icons from "@/constants/icons";
 import images from "@/constants/images";
 
-import { getPropertyById } from "@/lib/appwrite";
+import { deleteProperty, getCurrentUser, getPropertyById } from "@/lib/appwrite";
 import { useAppwrite } from "@/lib/useAppwrite";
 
 const Property = () => {
@@ -31,6 +33,19 @@ const Property = () => {
       id: id!,
     },
   });
+
+  const router = useRouter();
+  const [isOwner, setIsOwner] = useState(false);
+
+  useEffect(() => {
+    const checkOwner = async () => {
+      const user = await getCurrentUser();
+      if (!user || !property) return;
+      const agentId = typeof property.agent === 'string' ? property.agent : property.agent?.$id || property.agent?.id;
+      setIsOwner(agentId === user.$id);
+    };
+    checkOwner();
+  }, [property]);
 
   if (loading) {
     return (
@@ -84,6 +99,25 @@ const Property = () => {
                   <FavoriteButton propertyId={id!} size={24} />
                 </TouchableOpacity>
                 <Image source={icons.send} className="size-7" />
+                {isOwner && (
+                  <>
+                    <TouchableOpacity onPress={() => router.push({ pathname: '/(root)/(tabs)/create-property', params: { id } } as any)} className="bg-white/90 rounded-full p-2.5">
+                      <Text className="text-primary-300">Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => {
+                      // Confirm deletion
+                      const confirmDelete = () => {
+                        deleteProperty(id!).then(() => router.back()).catch(e => console.error(e));
+                      };
+                      Alert.alert('Delete', 'Are you sure you want to delete this listing?', [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Delete', style: 'destructive', onPress: confirmDelete }
+                      ]);
+                    }} className="bg-white/90 rounded-full p-2.5">
+                      <Text className="text-red-500">Delete</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
               </View>
             </View>
           </View>

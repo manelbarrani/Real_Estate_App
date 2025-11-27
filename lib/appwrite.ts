@@ -38,8 +38,98 @@ export const avatar = new Avatars(client);
 export const databases = new Databases(client);
 export const storage = new Storage(client);
 
+const facilityFilterMap: Record<string, string> = {
+  parking: 'Car Parking',
+  'car parking': 'Car Parking',
+  'sports center': 'Sports Center',
+  'sports-center': 'Sports Center',
+  gym: 'Gym',
+  wifi: 'Wifi',
+  'pet-friendly': 'Pet Center',
+  'pet friendly': 'Pet Center',
+  'pet center': 'Pet Center',
+  laundry: 'Laundry',
+  cutlery: 'Cutlery',
+  'swimming pool': 'Swimming pool',
+  'swimming_pool': 'Swimming pool',
+};
+
+const normaliseFacilityFilter = (value?: string | null) => {
+  if (!value || typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const alias = facilityFilterMap[trimmed.toLowerCase()];
+  return alias || trimmed;
+};
+
+const normaliseGeolocationPayload = (value: any): string | undefined => {
+  if (!value) return undefined;
+
+  const serialise = (lat: number, lng: number) =>
+    JSON.stringify({
+      lat: Number(lat.toFixed(6)),
+      lng: Number(lng.toFixed(6)),
+    });
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+
+    // Try to parse in case it's already JSON and ensure it serialises consistently
+    try {
+      const parsed = JSON.parse(trimmed);
+      const lat = parseFloat(parsed.lat ?? parsed.latitude);
+      const lng = parseFloat(parsed.lng ?? parsed.longitude);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        return serialise(lat, lng);
+      }
+    } catch (err) {
+      if (trimmed.includes(',')) {
+        const [latPart, lngPart] = trimmed.split(',');
+        const lat = parseFloat(latPart);
+        const lng = parseFloat(lngPart);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+          return serialise(lat, lng);
+        }
+      }
+    }
+
+    return trimmed;
+  }
+
+  if (Array.isArray(value) && value.length >= 2) {
+    const lat = parseFloat(value[0]);
+    const lng = parseFloat(value[1]);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      return serialise(lat, lng);
+    }
+    return undefined;
+  }
+
+  if (typeof value === 'object') {
+    const lat = parseFloat(value.lat ?? value.latitude);
+    const lng = parseFloat(value.lng ?? value.longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      return serialise(lat, lng);
+    }
+  }
+
+  return undefined;
+};
+
 export async function login() {
   try {
+    // If already logged in, return early instead of trying to create a new session
+    try {
+      const existing = await account.get();
+      if (existing && existing.$id) {
+        console.log('login: session already active for user', existing.$id);
+        return true;
+      }
+    } catch (e) {
+      // If get() fails, continue to create a session
+    }
+
     const redirectUri = Linking.createURL("oauth");
 
     const response = await account.createOAuth2Token({
@@ -72,9 +162,18 @@ export async function login() {
 
     const session = await account.createSession(userId, secret);
     if (!session) throw new Error("Failed to create session");
-    
+
     return true;
   } catch (error) {
+    // If Appwrite complains that a session exists, treat as non-fatal and return true
+    try {
+      const msg = (error as any)?.message || '';
+      if (msg.toLowerCase().includes('prohibited') || msg.toLowerCase().includes('session is active')) {
+        console.warn('login: session creation prohibited because a session is already active');
+        return true;
+      }
+    } catch (e) {}
+
     console.error(error);
     return false;
   }
@@ -109,7 +208,11 @@ export async function getCurrentUser() {
 
         return null;
     } catch (error) {
-        console.log(error);
+        // Silently handle guest/unauthenticated state - user will be redirected to sign-in
+        const errorMsg = (error as any)?.message || '';
+        if (!errorMsg.includes('missing scope') && !errorMsg.includes('guests')) {
+            console.log(error);
+        }
         return null;
     }
 }
@@ -126,38 +229,238 @@ export async function getLatesProperties() {
         return [];
     }
 }
-export async function getProperties({filter ,query, limit}: {filter: string; query: string; limit?: number}) {
+export async function getProperties({
+  filter,
+  query,
+  limit,
+  minPrice,
+  maxPrice,
+  minBeds,
+  maxBeds,
+  bathrooms,
+  facilities,
+  sort,
+}: {
+  filter: string;
+  query: string;
+  limit?: number;
+  minPrice?: number;
+  maxPrice?: number;
+  minBeds?: number;
+  maxBeds?: number;
+  bathrooms?: number;
+  facilities?: string[];
+  sort?: 'newest' | 'price_high' | 'price_low' | 'rating';
+}) {
   try {
-    const buildQuery: any[] = [Query.orderDesc("$createdAt")];
+    const buildQuery: any[] = [];
+
+    // SORT
+    if (sort) {
+      switch (sort) {
+        case 'price_high':
+          buildQuery.push(Query.orderDesc('price'));
+          break;
+        case 'price_low':
+          buildQuery.push(Query.orderAsc('price'));
+          break;
+        case 'rating':
+          buildQuery.push(Query.orderDesc('rating'));
+          break;
+        case 'newest':
+        default:
+          buildQuery.push(Query.orderDesc('$createdAt'));
+      }
+    } else {
+      buildQuery.push(Query.orderDesc('$createdAt'));
+    }
 
     // CATEGORY FILTER
-    if (filter && filter !== "all" && filter !== "All") {
-      buildQuery.push(Query.equal("type", filter));
+    if (filter && filter !== 'all' && filter !== 'All') {
+      buildQuery.push(Query.equal('type', filter));
     }
+
     // SEARCH (OR conditions)
     if (query) {
       buildQuery.push(
         Query.or([
-          Query.search("name", query),
-          Query.search("address", query),
-          Query.search("type", query),
+          Query.search('name', query),
+          Query.search('address', query),
+          Query.search('type', query),
         ])
       );
     }
+
+    // PRICE RANGE
+    if (typeof minPrice === 'number') buildQuery.push(Query.greaterThanEqual('price', minPrice));
+    if (typeof maxPrice === 'number') buildQuery.push(Query.lessThanEqual('price', maxPrice));
+
+    // BEDS / BATHS
+    if (typeof minBeds === 'number') buildQuery.push(Query.greaterThanEqual('bedrooms', minBeds));
+    if (typeof maxBeds === 'number') buildQuery.push(Query.lessThanEqual('bedrooms', maxBeds));
+    if (typeof bathrooms === 'number') buildQuery.push(Query.equal('bathrooms', bathrooms));
+
+    // FACILITIES stored as comma-separated string; search for tokens
+    if (facilities && facilities.length > 0) {
+      const normalisedFacilities = facilities
+        .map((f: string) => normaliseFacilityFilter(typeof f === 'string' ? f : ''))
+        .filter((f): f is string => !!f);
+
+      normalisedFacilities.forEach((f) => buildQuery.push(Query.search('facilities', f)));
+    }
+
     if (limit) {
       buildQuery.push(Query.limit(limit));
     }
-    const result = await databases.listDocuments(
-            config.databaseId!,
-            config.propertiesCollectionId!,
-            buildQuery,
-        );
-        return result.documents as unknown as PropertyDocument[];;
 
+    const result = await databases.listDocuments(
+      config.databaseId!,
+      config.propertiesCollectionId!,
+      buildQuery
+    );
+
+    return result.documents as unknown as PropertyDocument[];
+  } catch (error) {
+    console.log(error);
+    return [];
   }
-  catch (error) {
-      console.log(error);
-      return [];
+}
+
+// Property Management Helpers (create/update/delete)
+export async function createProperty(data: any) {
+  try {
+    // Attach current user as agent if not provided
+    try {
+      const user = await getCurrentUser();
+      if (user && !data.agent) {
+        // For Appwrite relationship many-to-one, store agent id
+        data.agent = user.$id;
+      }
+    } catch (e) {
+      // ignore - create without agent
+    }
+
+    // Ensure required fields for the properties collection are present
+    // Some Appwrite collection schemas may require a `rating` attribute.
+    if (typeof data.rating !== 'number') {
+      data.rating = 0;
+    }
+
+    const geolocationValue = normaliseGeolocationPayload(data.geolocation);
+    if (geolocationValue) {
+      data.geolocation = geolocationValue;
+    } else {
+      delete data.geolocation;
+    }
+
+    // Facilities: if array, store as comma-separated string per schema
+    if (Array.isArray(data.facilities)) {
+      const normalisedFacilities = data.facilities
+        .map((f: string) => normaliseFacilityFilter(typeof f === 'string' ? f : ''))
+        .filter((f: string | null): f is string => !!f);
+      data.facilities = normalisedFacilities.join(',');
+    }
+
+    const doc = await databases.createDocument(
+      config.databaseId!,
+      config.propertiesCollectionId!,
+      ID.unique(),
+      data
+    );
+    return { success: true, doc };
+  } catch (error) {
+    console.error('Error creating property:', error);
+    return { success: false, error };
+  }
+}
+
+export async function updateProperty(id: string, data: any) {
+  try {
+    const geolocationValue = normaliseGeolocationPayload(data.geolocation);
+    if (geolocationValue) {
+      data.geolocation = geolocationValue;
+    } else if ('geolocation' in data) {
+      delete data.geolocation;
+    }
+
+    // Facilities: convert array to comma-separated string if provided
+    if (Array.isArray(data.facilities)) {
+      const normalisedFacilities = data.facilities
+        .map((f: string) => normaliseFacilityFilter(typeof f === 'string' ? f : ''))
+        .filter((f: string | null): f is string => !!f);
+      data.facilities = normalisedFacilities.join(',');
+    }
+
+    const doc = await databases.updateDocument(
+      config.databaseId!,
+      config.propertiesCollectionId!,
+      id,
+      data
+    );
+    return { success: true, doc };
+  } catch (error) {
+    console.error('Error updating property:', error);
+    return { success: false, error };
+  }
+}
+
+export async function deleteProperty(id: string) {
+  try {
+    await databases.deleteDocument(
+      config.databaseId!,
+      config.propertiesCollectionId!,
+      id
+    );
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting property:', error);
+    return { success: false, error };
+  }
+}
+
+// Upload multiple gallery images to a bucket and (optionally) create gallery documents
+export async function uploadGalleryImages(images: string[], bucketId: string) {
+  try {
+    const uploaded: any[] = [];
+    for (const uri of images) {
+      const filename = uri.split('/').pop() || `gallery-${Date.now()}.jpg`;
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      const fileObject = {
+        name: filename,
+        type: blob.type || 'image/jpeg',
+        size: blob.size,
+        uri,
+        slice: blob.slice?.bind(blob),
+        stream: blob.stream?.bind(blob),
+        arrayBuffer: blob.arrayBuffer?.bind(blob),
+      } as any;
+
+      const uploadBucket = bucketId || config.profileImagesBucketId!;
+      const uploadedFile = await storage.createFile(uploadBucket, ID.unique(), fileObject as any);
+      const fileUrl = `${config.endpoint}/storage/buckets/${uploadBucket}/files/${uploadedFile.$id}/view?project=${config.projectId}`;
+
+      // Also create a gallery document (if galleries collection configured)
+      let galleryDoc: any = null;
+      try {
+        if (config.galleriesCollectionId) {
+          galleryDoc = await databases.createDocument(
+            config.databaseId!,
+            config.galleriesCollectionId!,
+            ID.unique(),
+            { image: fileUrl }
+          );
+        }
+      } catch (e) {
+        console.warn('Could not create gallery document:', e);
+      }
+
+      uploaded.push({ fileId: uploadedFile.$id, fileUrl, galleryDoc });
+    }
+    return { success: true, uploaded };
+  } catch (error) {
+    console.error('Error uploading gallery images:', error);
+    return { success: false, error };
   }
 }
 export async function getPropertyById({ id }: { id: string }){
@@ -172,6 +475,36 @@ export async function getPropertyById({ id }: { id: string }){
     console.log(error);
     return null;
    }
+}
+
+export async function getMyProperties(params?: any) {
+  try {
+    // Support being called with either a userId string or a params object { userId }
+    let uid: string | undefined;
+    if (typeof params === 'string') {
+      uid = params;
+    } else if (params && typeof params === 'object') {
+      uid = params.userId || params.userId?.toString();
+    }
+
+    if (!uid) {
+      const user = await getCurrentUser();
+      uid = user?.$id;
+    }
+
+    if (!uid) return [];
+
+    const result = await databases.listDocuments(
+      config.databaseId!,
+      config.propertiesCollectionId!,
+      [Query.equal('agent', uid as any), Query.orderDesc('$createdAt')]
+    );
+
+    return result.documents as unknown as PropertyDocument[];
+  } catch (error) {
+    console.error('Error fetching user properties:', error);
+    return [];
+  }
 }
 
 // Profile Update Functions

@@ -1,6 +1,7 @@
 import icons from '@/constants/icons';
 import { logout } from '@/lib/appwrite';
 import { useGlobalContext } from '@/lib/global-provider';
+import seed from '@/lib/seed';
 import { router } from 'expo-router';
 import React from 'react';
 import {
@@ -84,7 +85,24 @@ const Profile = () => {
                             title="Edit Profile" 
                             onPress={() => router.push('/(root)/(tabs)/edit-profile')}
                         />
+                        <SettingsItem 
+                            icon={icons.home} 
+                            title="My Listings" 
+                            onPress={() => router.push({ pathname: '/(root)/(tabs)/my-listings' } as any)}
+                        />
                         <SettingsItem icon={icons.calendar} title="My Bookings" />
+                        <SettingsItem
+                            icon={icons.people}
+                            title="Seed Data (dev)"
+                            onPress={async () => {
+                                try {
+                                    await seed();
+                                    Alert.alert('Seed', 'Seeding started. Check logs for progress.');
+                                } catch (e) {
+                                    Alert.alert('Seed Error', String(e));
+                                }
+                            }}
+                        />
                         <SettingsItem icon={icons.wallet} title="Payments" />
                     </View>
                                         <View className="flex flex-col mt-5 border-t pt-5 border-primary-200">

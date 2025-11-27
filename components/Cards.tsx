@@ -56,21 +56,30 @@ export const Card = ({item, onPress }: Props) => {
   return (
     <TouchableOpacity
       onPress={onPress}
-      className="flex-1 w-full mt-4 px-3 py-4 rounded-lg bg-white shadow-lg shadow-black-100/70 relative"
+      className="flex-1 w-full mt-4 px-3 py-3 rounded-xl bg-white border border-primary-50 relative"
+      style={{
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 3,
+      }}
     >
-      <View className="flex flex-row items-center absolute px-2 top-5 right-5 bg-white/90 rounded-full z-50">
-        <Image source={icons.star} className="w-2.5 h-2.5" />
-         <Text className="text-sm font-rubik-bold text-primary-300 ml-0.5">{item.rating}</Text>
+      <View className="flex flex-row items-center absolute px-2.5 py-1 top-5 right-5 bg-white/95 rounded-full z-50 shadow-sm">
+        <Image source={icons.star} className="w-3 h-3" />
+         <Text className="text-xs font-rubik-bold text-primary-300 ml-1">{item.rating}</Text>
       </View>
 
-      <Image source={{uri:item.image}} className="w-full h-40 rounded-lg" />
+      <Image source={{uri:item.image}} className="w-full h-40 rounded-lg" resizeMode="cover" />
 
-      <View className="flex flex-col mt-2">
-        <Text className="text-base font-rubik-bold text-black-300">{item.name}</Text>
-        <Text className="text-xs font-rubik text-black-200">{item.address}</Text>
-        <View className="flex flex-row items-center justify-between mt-2">
-          <Text className="text-base font-rubik-bold text-primary-300">${item.price}</Text>
-          <FavoriteButton propertyId={item.$id} size={20} className="-mr-2" />
+      <View className="flex flex-col mt-3">
+        <Text className="text-base font-rubik-bold text-black-300" numberOfLines={1}>{item.name}</Text>
+        <Text className="text-xs font-rubik text-black-200 mt-1" numberOfLines={1}>{item.address}</Text>
+        <View className="flex flex-row items-center justify-between mt-2.5">
+          <Text className="text-lg font-rubik-extrabold text-primary-300">
+            ${typeof item.price === 'number' ? (item.price as number).toLocaleString() : item.price}
+          </Text>
+          <FavoriteButton propertyId={item.$id} size={22} className="-mr-1" />
         </View>
       </View>
     </TouchableOpacity>

@@ -4,11 +4,11 @@ import { Image, Text, View } from "react-native";
 
 
 const TabIcon = ({ focused, icon, title }: { focused: boolean; icon: any; title: string }) => (
-    <View className="flex-1 mt-3 flex flex-col items-center">
+    <View className="flex-1 mt-2 flex flex-col items-center">
         <Image
             source={icon}
             resizeMode="contain"
-            className="size-6"
+            className="size-7"
             style={{ tintColor: focused ? "#0061FF" : "#748C94" }}
         />
         <Text className={`${focused ? "text-primary-300 font-rubik-medium" : "text-black-200 font-rubik"} text-xs w-full text-center mt-1`}>{title}</Text>
@@ -64,6 +64,18 @@ const TabsLayout = () => {
                         tabBarIcon: ({ focused }) => (
                             <TabIcon icon={icons.person} focused={focused} title="Profile" />
                         ),
+                    }}
+                />
+                <Tabs.Screen
+                    name="create-property"
+                    options={{
+                        href: null,
+                    }}
+                />
+                <Tabs.Screen
+                    name="my-listings"
+                    options={{
+                        href: null,
                     }}
                 />
                 <Tabs.Screen
