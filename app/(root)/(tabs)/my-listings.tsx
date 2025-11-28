@@ -3,6 +3,7 @@ import icons from '@/constants/icons';
 import { deleteProperty, getMyProperties } from '@/lib/appwrite';
 import { useAppwrite } from '@/lib/useAppwrite';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
 import React, { useCallback } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, Text, TouchableOpacity, View } from 'react-native';
@@ -14,6 +15,21 @@ export default function MyListings() {
     params: {},
   });
 
+  // Refresh the list when the screen comes into focus (only once per focus)
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+      
+      if (isActive) {
+        refetch({});
+      }
+      
+      return () => {
+        isActive = false;
+      };
+    }, [])
+  );
+
   const handleView = (id: string) => router.push({ pathname: '/propreties/[id]', params: { id } });
   const handleEdit = (id: string) => router.push({ pathname: '/(root)/(tabs)/create-property', params: { id } } as any);
 
@@ -24,7 +40,7 @@ export default function MyListings() {
         const res = await deleteProperty(id);
         if (res.success) {
           Alert.alert('Success', 'Listing deleted successfully');
-          refetch();
+          refetch({});
         } else {
           Alert.alert('Error', 'Could not delete listing. Please try again.');
         }

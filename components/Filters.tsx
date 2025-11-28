@@ -1,10 +1,34 @@
 import { categories, facilities as facilityOptions } from '@/constants/data';
 import icons from '@/constants/icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Image, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
-const Filters = () => {
+type SortKey = 'newest' | 'price_high' | 'price_low' | 'rating';
+
+type FiltersProps = {
+  initial?: {
+    filter?: string;
+    minPrice?: number;
+    maxPrice?: number;
+    minBeds?: number;
+    bathrooms?: number;
+    facilities?: string[];
+    sort?: SortKey;
+  };
+  onApply?: (params: {
+    filter?: string;
+    minPrice?: number;
+    maxPrice?: number;
+    minBeds?: number;
+    bathrooms?: number;
+    facilities?: string[];
+    sort?: SortKey;
+  }) => void;
+  showCategories?: boolean;
+};
+
+const Filters = ({ initial, onApply, showCategories = true }: FiltersProps) => {
   const params = useLocalSearchParams();
   const filter = typeof params.filter === 'string' ? params.filter : undefined;
   const router = useRouter();
@@ -17,16 +41,36 @@ const Filters = () => {
       console.warn('Filters: setParams failed (no nav context)', e);
     }
   };
-  const [selectedCategory, setSelectedCategory] = useState(filter || 'All');
+  const [selectedCategory, setSelectedCategory] = useState<string>(initial?.filter || filter || 'All');
   const [expanded, setExpanded] = useState(false);
-  const [minPrice, setMinPrice] = useState<string>((params.minPrice as string) || '');
-  const [maxPrice, setMaxPrice] = useState<string>((params.maxPrice as string) || '');
-  const [minBeds, setMinBeds] = useState<string>((params.minBeds as string) || '');
-  const [bathrooms, setBathrooms] = useState<string>((params.bathrooms as string) || '');
-  const [selectedFacilities, setSelectedFacilities] = useState<string[]>(
-    params.facilities ? (params.facilities as string).split(',') : []
+  const [minPrice, setMinPrice] = useState<string>(
+    initial?.minPrice !== undefined ? String(initial.minPrice) : (params.minPrice as string) || ''
   );
-  const [sort, setSort] = useState<string>((params.sort as string) || 'newest');
+  const [maxPrice, setMaxPrice] = useState<string>(
+    initial?.maxPrice !== undefined ? String(initial.maxPrice) : (params.maxPrice as string) || ''
+  );
+  const [minBeds, setMinBeds] = useState<string>(
+    initial?.minBeds !== undefined ? String(initial.minBeds) : (params.minBeds as string) || ''
+  );
+  const [bathrooms, setBathrooms] = useState<string>(
+    initial?.bathrooms !== undefined ? String(initial.bathrooms) : (params.bathrooms as string) || ''
+  );
+  const [selectedFacilities, setSelectedFacilities] = useState<string[]>(
+    initial?.facilities ?? (params.facilities ? (params.facilities as string).split(',') : [])
+  );
+  const [sort, setSort] = useState<SortKey>((initial?.sort || (params.sort as SortKey)) || 'newest');
+
+  // Keep local state in sync if `initial` changes
+  useEffect(() => {
+    if (!initial) return;
+    setSelectedCategory(initial.filter || 'All');
+    setMinPrice(initial.minPrice !== undefined ? String(initial.minPrice) : '');
+    setMaxPrice(initial.maxPrice !== undefined ? String(initial.maxPrice) : '');
+    setMinBeds(initial.minBeds !== undefined ? String(initial.minBeds) : '');
+    setBathrooms(initial.bathrooms !== undefined ? String(initial.bathrooms) : '');
+    setSelectedFacilities(initial.facilities || []);
+    setSort(initial.sort || 'newest');
+  }, [initial]);
 
   const handleCategory = (category: string) => {
     if (selectedCategory === category) {
@@ -38,16 +82,33 @@ const Filters = () => {
     safeSetParams({ filter: category });
   };
 
+  const parsed = useMemo(() => ({
+    minPrice: minPrice ? Number(minPrice) : undefined,
+    maxPrice: maxPrice ? Number(maxPrice) : undefined,
+    minBeds: minBeds ? Number(minBeds) : undefined,
+    bathrooms: bathrooms ? Number(bathrooms) : undefined,
+    facilities: selectedFacilities,
+    sort,
+  }), [minPrice, maxPrice, minBeds, bathrooms, selectedFacilities, sort]);
+
   const applyAdvancedFilters = () => {
-    const facilitiesParam = selectedFacilities.length > 0 ? selectedFacilities.join(',') : undefined;
-    safeSetParams({
-      minPrice: minPrice || undefined,
-      maxPrice: maxPrice || undefined,
-      minBeds: minBeds || undefined,
-      bathrooms: bathrooms || undefined,
-      facilities: facilitiesParam,
-      sort: sort || undefined,
-    });
+    if (onApply) {
+      onApply({
+        filter: selectedCategory === 'All' ? undefined : selectedCategory,
+        ...parsed,
+      });
+    } else {
+      const facilitiesParam = parsed.facilities && parsed.facilities.length > 0 ? parsed.facilities.join(',') : undefined;
+      safeSetParams({
+        filter: selectedCategory || 'All',
+        minPrice: parsed.minPrice,
+        maxPrice: parsed.maxPrice,
+        minBeds: parsed.minBeds,
+        bathrooms: parsed.bathrooms,
+        facilities: facilitiesParam,
+        sort: parsed.sort,
+      });
+    }
     setExpanded(false);
   };
 
@@ -65,7 +126,7 @@ const Filters = () => {
       showsHorizontalScrollIndicator={false}
       className="mt-3 mb-2"
     >
-      {categories.map((item) => (
+      {showCategories && categories.map((item) => (
         <TouchableOpacity
           key={item.category}
             onPress={() => handleCategory(item.category)}
@@ -148,7 +209,7 @@ const Filters = () => {
           <Text className="font-rubik-bold text-black-300 mb-2 text-sm">Sort By</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View className="flex flex-row gap-2">
-              {['newest','price_high','price_low','rating'].map((s) => {
+              {(['newest','price_high','price_low','rating'] as SortKey[]).map((s) => {
                 const labels: Record<string, string> = {
                   newest: 'Newest',
                   price_high: 'Price: High',
@@ -156,7 +217,7 @@ const Filters = () => {
                   rating: 'Rating'
                 };
                 return (
-                  <TouchableOpacity key={s} onPress={() => setSort(s)} className={`px-4 py-2 rounded-full ${sort===s ? 'bg-primary-300' : 'bg-black-100 border border-primary-200'}`}>
+                  <TouchableOpacity key={s} onPress={() => setSort(s as SortKey)} className={`px-4 py-2 rounded-full ${sort===s ? 'bg-primary-300' : 'bg-black-100 border border-primary-200'}`}>
                     <Text className={`text-sm font-rubik ${sort===s? 'text-white' : 'text-black-300'}`}>{labels[s]}</Text>
                   </TouchableOpacity>
                 );

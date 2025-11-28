@@ -16,7 +16,17 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 
 export default function Explore() {
-  const params= useLocalSearchParams<{query?: string, filter?: string}>();
+  const params= useLocalSearchParams<{
+    query?: string;
+    filter?: string;
+    minPrice?: string;
+    maxPrice?: string;
+    minBeds?: string;
+    maxBeds?: string;
+    bathrooms?: string;
+    facilities?: string;
+    sort?: string;
+  }>();
 
   const { data:properties, loading, refetch } = useAppwrite<PropertyDocument[], any>({
     fn: getProperties,
@@ -86,7 +96,18 @@ export default function Explore() {
                 <Search />
 
                 <View className="mt-5">
-                    <Filters/>
+                    <Filters
+                      showCategories
+                      initial={{
+                        filter: typeof params.filter === 'string' ? params.filter : undefined,
+                        minPrice: params.minPrice ? Number(params.minPrice) : undefined,
+                        maxPrice: params.maxPrice ? Number(params.maxPrice) : undefined,
+                        minBeds: params.minBeds ? Number(params.minBeds) : undefined,
+                        bathrooms: params.bathrooms ? Number(params.bathrooms) : undefined,
+                        facilities: params.facilities ? String(params.facilities).split(',') : [],
+                        sort: (params.sort as any) || 'newest',
+                      }}
+                    />
                     <View className="flex-row items-center justify-between mt-4">
                       <Text className="text-xl font-rubik-bold text-black-300">
                         {properties?.length || 0} Properties

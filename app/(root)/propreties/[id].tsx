@@ -6,6 +6,7 @@ import {
     Dimensions,
     FlatList,
     Image,
+    Linking,
     Platform,
     ScrollView,
     Text,
@@ -15,6 +16,7 @@ import {
 
 import Comment from "@/components/Comment";
 import FavoriteButton from "@/components/FavoriteButton";
+import PropertiesMap from "@/components/PropertiesMap";
 import { facilities } from "@/constants/data";
 import icons from "@/constants/icons";
 import images from "@/constants/images";
@@ -26,6 +28,7 @@ const Property = () => {
   const { id } = useLocalSearchParams<{ id?: string }>();
 
   const windowHeight = Dimensions.get("window").height;
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   const { data: property, loading } = useAppwrite({
     fn: getPropertyById,
@@ -36,16 +39,72 @@ const Property = () => {
 
   const router = useRouter();
   const [isOwner, setIsOwner] = useState(false);
+  const [agentData, setAgentData] = useState<any>(null);
+
+  // Get all images from the images array
+  const allImages = property ? (property.images || []).filter(Boolean) : [];
+  
+  // Legacy support: if no images array but has old 'image' field
+  if (allImages.length === 0 && property?.image) {
+    allImages.push(property.image);
+  }
 
   useEffect(() => {
-    const checkOwner = async () => {
+    const checkOwnerAndLoadAgent = async () => {
       const user = await getCurrentUser();
-      if (!user || !property) return;
+      if (!property) return;
+      
+      console.log('Property agent data:', property.agent);
+      
+      // Check if current user is the owner
       const agentId = typeof property.agent === 'string' ? property.agent : property.agent?.$id || property.agent?.id;
-      setIsOwner(agentId === user.$id);
+      if (user && agentId === user.$id) {
+        setIsOwner(true);
+        // Use current user data for agent info
+        const userData = {
+          name: user.name,
+          avatar: user.avatar,
+          email: user.email,
+          phone: user.phone
+        };
+        console.log('Setting agent data from user:', userData);
+        setAgentData(userData);
+      } else {
+        setIsOwner(false);
+        // Use property agent data
+        if (property.agent && typeof property.agent === 'object') {
+          const propAgentData = {
+            name: property.agent.name,
+            avatar: property.agent.avatar,
+            email: property.agent.email,
+            phone: property.agent.phone || ''
+          };
+          console.log('Setting agent data from property:', propAgentData);
+          setAgentData(propAgentData);
+        }
+      }
     };
-    checkOwner();
+    checkOwnerAndLoadAgent();
   }, [property]);
+
+  const handleCall = () => {
+    const phone = agentData?.phone;
+    if (!phone) {
+      Alert.alert('No Phone', 'Agent phone number not available');
+      return;
+    }
+    
+    const phoneUrl = Platform.OS === 'ios' ? `telprompt:${phone}` : `tel:${phone}`;
+    Linking.canOpenURL(phoneUrl)
+      .then((supported) => {
+        if (supported) {
+          Linking.openURL(phoneUrl);
+        } else {
+          Alert.alert('Error', 'Phone call is not supported on this device');
+        }
+      })
+      .catch((err) => console.error('Error opening phone dialer:', err));
+  };
 
   if (loading) {
     return (
@@ -70,11 +129,44 @@ const Property = () => {
         contentContainerClassName="pb-32 bg-white"
       >
         <View className="relative w-full" style={{ height: windowHeight / 2 }}>
-          <Image
-            source={{ uri: property.image }}
-            className="size-full"
-            resizeMode="cover"
-          />
+          {/* Image Carousel */}
+          {allImages.length > 0 && (
+            <>
+              <FlatList
+                data={allImages}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                onMomentumScrollEnd={(event) => {
+                  const index = Math.round(event.nativeEvent.contentOffset.x / Dimensions.get('window').width);
+                  setCurrentImageIndex(index);
+                }}
+                keyExtractor={(item, index) => index.toString()}
+                renderItem={({ item }) => (
+                  <Image
+                    source={{ uri: item }}
+                    style={{ width: Dimensions.get('window').width, height: windowHeight / 2 }}
+                    resizeMode="cover"
+                  />
+                )}
+              />
+              
+              {/* Image indicator dots */}
+              {allImages.length > 1 && (
+                <View className="absolute bottom-4 left-0 right-0 flex-row justify-center items-center z-50">
+                  {allImages.map((_, index) => (
+                    <View
+                      key={index}
+                      className={`h-2 rounded-full mx-1 ${
+                        index === currentImageIndex ? 'w-6 bg-white' : 'w-2 bg-white/50'
+                      }`}
+                    />
+                  ))}
+                </View>
+              )}
+            </>
+          )}
+          
           <Image
             source={images.whiteGradient}
             className="absolute top-0 w-full z-40"
@@ -172,23 +264,37 @@ const Property = () => {
             <View className="flex flex-row items-center justify-between mt-4">
               <View className="flex flex-row items-center">
                 <Image
-                  source={{ uri: property.agent?.avatar }}
+                  source={{ uri: agentData?.avatar || property.agent?.avatar }}
                   className="size-14 rounded-full"
                 />
 
                 <View className="flex flex-col items-start justify-center ml-3">
                   <Text className="text-lg text-black-300 text-start font-rubik-bold">
-                    {property.agent?.name}
+                    {agentData?.name || property.agent?.name || 'Unknown'}
                   </Text>
-                  <Text className="text-sm text-black-200 text-start font-rubik-medium">
-                    {property.agent?.email}
-                  </Text>
+                  {agentData?.phone ? (
+                    <Text className="text-sm text-black-200 text-start font-rubik-medium">
+                      {agentData.phone}
+                    </Text>
+                  ) : (
+                    <Text className="text-sm text-black-200 text-start font-rubik-medium">
+                      {agentData?.email || property.agent?.email}
+                    </Text>
+                  )}
                 </View>
               </View>
 
               <View className="flex flex-row items-center gap-3">
-                <Image source={icons.chat} className="size-7" />
-                <Image source={icons.phone} className="size-7" />
+                <TouchableOpacity>
+                  <Image source={icons.chat} className="size-7" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleCall} disabled={!agentData?.phone}>
+                  <Image 
+                    source={icons.phone} 
+                    className="size-7" 
+                    style={{ opacity: agentData?.phone ? 1 : 0.5 }}
+                  />
+                </TouchableOpacity>
               </View>
             </View>
           </View>
@@ -273,10 +379,28 @@ const Property = () => {
               </Text>
             </View>
 
-            <Image
-              source={images.map}
-              className="h-52 w-full mt-5 rounded-xl"
-            />
+            {property.geolocation && (() => {
+              try {
+                const geo = typeof property.geolocation === 'string' 
+                  ? JSON.parse(property.geolocation) 
+                  : property.geolocation;
+                return (
+                  <View className="h-52 w-full mt-5 rounded-xl overflow-hidden">
+                    <PropertiesMap 
+                      properties={[property]}
+                    />
+                  </View>
+                );
+              } catch (e) {
+                console.error('Error parsing geolocation:', e);
+                return (
+                  <Image
+                    source={images.map}
+                    className="h-52 w-full mt-5 rounded-xl"
+                  />
+                );
+              }
+            })()}
           </View>
 
           {property.reviews && property.reviews.length > 0 && (

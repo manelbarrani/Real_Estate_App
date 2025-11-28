@@ -1,3 +1,4 @@
+import LocationPicker from '@/components/LocationPicker';
 import { facilities as facilityOptions } from '@/constants/data';
 import { config, createProperty, getPropertyById, updateProperty, uploadGalleryImages } from '@/lib/appwrite';
 import { Ionicons } from '@expo/vector-icons';
@@ -38,18 +39,39 @@ const CreateProperty = () => {
           setType(p.type || 'Apartment');
           setDescription(p.description || '');
           setSelectedFacilities(p.facilities || []);
-          // gallery may be either array of objects or related docs
+          
+          // Load all existing images from the images array
+          const existingImages = (p.images || []).filter(Boolean);
+          if (existingImages.length > 0) {
+            setImagesUris(existingImages);
+          }
+          
+          // Legacy: support old 'image' field if it exists
+          if (!existingImages.length && p.image) {
+            setImagesUris([p.image]);
+          }
+          
+          // gallery may be either array of objects or related docs (legacy support)
           if (p.gallery && Array.isArray(p.gallery)) {
             const uris = p.gallery.map((g: any) => g.image || g.fileUrl || '');
-            setImagesUris(uris.filter(Boolean));
+            const filteredUris = uris.filter(Boolean);
+            if (filteredUris.length > 0 && existingImages.length === 0) {
+              setImagesUris(filteredUris);
+            }
           }
             // geolocation may be object {lat,lng} or string
             if (p.geolocation) {
               const geo = p.geolocation;
               if (typeof geo === 'string') {
-                const parts = geo.split(',').map((s: string) => s.trim());
-                setLatitude(parts[0] || '');
-                setLongitude(parts[1] || '');
+                try {
+                  const parsed = JSON.parse(geo);
+                  setLatitude(String(parsed.lat || ''));
+                  setLongitude(String(parsed.lng || ''));
+                } catch (e) {
+                  const parts = geo.split(',').map((s: string) => s.trim());
+                  setLatitude(parts[0] || '');
+                  setLongitude(parts[1] || '');
+                }
               } else if (typeof geo === 'object') {
                 setLatitude(String(geo.lat || ''));
                 setLongitude(String(geo.lng || ''));
@@ -112,16 +134,23 @@ const CreateProperty = () => {
     const latNum = parseFloat(latitude);
     const lngNum = parseFloat(longitude);
     const hasGeolocation = Number.isFinite(latNum) && Number.isFinite(lngNum);
-    if (!hasGeolocation) {
-      Alert.alert('Location required', 'Please provide valid latitude and longitude');
+    
+    // Only require location for new properties, not when editing
+    if (!editingId && !hasGeolocation) {
+      Alert.alert('Location required', 'Please tap the map to set the property location');
       return;
     }
 
     setSubmitting(true);
     try {
-      // Upload gallery images if any: use a valid Storage bucket (default profile-images)
-      const uploadResult = imagesUris.length > 0
-        ? await uploadGalleryImages(imagesUris, config.profileImagesBucketId!)
+      // When editing, only upload NEW local images (file:// URIs)
+      // When creating, upload all images
+      const localImages = editingId 
+        ? imagesUris.filter(uri => uri.startsWith('file://'))
+        : imagesUris;
+
+      const uploadResult = localImages.length > 0
+        ? await uploadGalleryImages(localImages, config.profileImagesBucketId!)
         : { success: true, uploaded: [] } as any;
 
       if (!uploadResult.success) {
@@ -129,12 +158,15 @@ const CreateProperty = () => {
         return;
       }
 
-      // For the properties collection, `gallery` is a relation array (document IDs)
-      const galleryIds: string[] = (uploadResult.uploaded || [])
-        .map((u: any) => u.galleryDoc?.$id)
-        .filter((id: any) => !!id);
+      // Get all image URLs (both newly uploaded and existing ones)
+      const newImageUrls = (uploadResult.uploaded || []).map((u: any) => u.fileUrl).filter(Boolean);
+      const existingImageUrls = editingId 
+        ? imagesUris.filter(uri => !uri.startsWith('file://'))
+        : [];
+      
+      const allImageUrls = [...existingImageUrls, ...newImageUrls];
 
-      const data = {
+      const data: any = {
         name,
         address,
         price: Number(price),
@@ -144,10 +176,12 @@ const CreateProperty = () => {
         type,
         description,
         facilities: selectedFacilities,
-        image: (uploadResult.uploaded?.[0]?.fileUrl) || '',
-        gallery: galleryIds.length > 0 ? galleryIds : undefined,
+        images: allImageUrls.length > 0 ? allImageUrls : ['https://via.placeholder.com/400'], // All images in array
         geolocation: hasGeolocation ? JSON.stringify({ lat: latNum, lng: lngNum }) : undefined,
       };
+
+      // Note: gallery attribute has been removed from properties collection
+      // Images are uploaded to storage but not linked via relationships anymore
 
       let res: any;
       if (editingId) {
@@ -157,8 +191,18 @@ const CreateProperty = () => {
       }
 
       if (res.success) {
-        Alert.alert('Success', editingId ? 'Property updated' : 'Property created');
-        router.back();
+        Alert.alert('Success', editingId ? 'Property updated successfully!' : 'Property created successfully!', [
+          {
+            text: 'OK',
+            onPress: () => {
+              router.back();
+              // Small delay to ensure the back navigation completes before refresh
+              setTimeout(() => {
+                router.push('/(root)/(tabs)/my-listings');
+              }, 100);
+            }
+          }
+        ]);
       } else {
         Alert.alert('Error', 'Could not save property');
       }
@@ -247,33 +291,22 @@ const CreateProperty = () => {
           />
         </View>
 
-        {/* Location */}
+        {/* Location Picker */}
         <View className="mb-6">
-          <Text className="text-sm font-rubik-bold text-black-300 mb-3">Location Coordinates</Text>
-          <View className="flex-row gap-3">
-            <View className="flex-1">
-              <Text className="text-xs text-black-200 mb-2 font-rubik">Latitude</Text>
-              <TextInput 
-                placeholder="33.8869" 
-                value={latitude} 
-                onChangeText={setLatitude} 
-                keyboardType="numeric" 
-                placeholderTextColor="#999"
-                className="border border-primary-100 bg-white px-4 py-3.5 rounded-lg font-rubik" 
-              />
-            </View>
-            <View className="flex-1">
-              <Text className="text-xs text-black-200 mb-2 font-rubik">Longitude</Text>
-              <TextInput 
-                placeholder="9.5375" 
-                value={longitude} 
-                onChangeText={setLongitude} 
-                keyboardType="numeric" 
-                placeholderTextColor="#999"
-                className="border border-primary-100 bg-white px-4 py-3.5 rounded-lg font-rubik" 
-              />
-            </View>
-          </View>
+          <Text className="text-sm font-rubik-bold text-black-300 mb-3">Location</Text>
+          <LocationPicker
+            initial={{
+              lat: latitude ? Number(latitude) : undefined,
+              lng: longitude ? Number(longitude) : undefined,
+            }}
+            onChange={(c) => {
+              setLatitude(String(c.lat));
+              setLongitude(String(c.lng));
+            }}
+          />
+          <Text className="text-xs text-black-200 mt-2 font-rubik">
+            Tap the map to set the property location.
+          </Text>
         </View>
 
         {/* Description */}
@@ -295,16 +328,29 @@ const CreateProperty = () => {
         <View className="mb-6">
           <Text className="text-sm font-rubik-bold text-black-300 mb-3">Facilities</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {facilityOptions.map(f => (
-              <TouchableOpacity 
-                key={f.title} 
-                onPress={() => toggleFacility(f.title)} 
-                className={`flex-row items-center px-4 py-2.5 mr-3 rounded-full ${selectedFacilities.includes(f.title) ? 'bg-primary-300 shadow-sm' : 'bg-black-100 border border-primary-200'}`}
-              >
-                <Image source={f.icon} className="w-4 h-4 mr-2" tintColor={selectedFacilities.includes(f.title) ? 'white' : '#666'} />
-                <Text className={`text-sm font-rubik ${selectedFacilities.includes(f.title) ? 'text-white' : 'text-black-300'}`}>{f.title}</Text>
-              </TouchableOpacity>
-            ))}
+            {facilityOptions.map(f => {
+              const isSelected = selectedFacilities.includes(f.title);
+              return (
+                <TouchableOpacity 
+                  key={f.title} 
+                  onPress={() => toggleFacility(f.title)} 
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingHorizontal: 16,
+                    paddingVertical: 10,
+                    marginRight: 12,
+                    borderRadius: 9999,
+                    backgroundColor: isSelected ? '#0061FF' : '#F5F5F5',
+                    borderWidth: isSelected ? 0 : 1,
+                    borderColor: '#E5E5E5',
+                  }}
+                >
+                  <Image source={f.icon} className="w-4 h-4 mr-2" tintColor={isSelected ? 'white' : '#666'} />
+                  <Text className={`text-sm font-rubik ${isSelected ? 'text-white' : 'text-black-300'}`}>{f.title}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
         </View>
 

@@ -195,7 +195,21 @@ export async function getCurrentUser() {
         if (result.$id) {
             // Get user preferences for custom fields
             const prefs = result.prefs || {};
-            const userAvatar = prefs.photoURL || avatar.getInitials(result.name).toString();
+            
+            // Convert avatar to proper URL string
+            let userAvatar: string;
+            if (prefs.photoURL) {
+                userAvatar = prefs.photoURL;
+            } else {
+                // Generate initials avatar URL
+                userAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(result.name)}&size=200`;
+            }
+
+            // Ensure agent entry exists in agents collection (but don't block on this)
+            // Run in background without awaiting to avoid slowing down user fetching
+            ensureAgentExists(result.$id, result.name, result.email, userAvatar, prefs.phone).catch(err => {
+                console.log('Background agent sync failed (non-critical):', err);
+            });
 
             return {
                 ...result,
@@ -300,13 +314,15 @@ export async function getProperties({
     if (typeof maxBeds === 'number') buildQuery.push(Query.lessThanEqual('bedrooms', maxBeds));
     if (typeof bathrooms === 'number') buildQuery.push(Query.equal('bathrooms', bathrooms));
 
-    // FACILITIES stored as comma-separated string; search for tokens
+    // FACILITIES stored as ARRAY in schema; use contains for matching
     if (facilities && facilities.length > 0) {
       const normalisedFacilities = facilities
         .map((f: string) => normaliseFacilityFilter(typeof f === 'string' ? f : ''))
         .filter((f): f is string => !!f);
 
-      normalisedFacilities.forEach((f) => buildQuery.push(Query.search('facilities', f)));
+      if (normalisedFacilities.length > 0) {
+        buildQuery.push(Query.contains('facilities', normalisedFacilities as any));
+      }
     }
 
     if (limit) {
@@ -335,9 +351,11 @@ export async function createProperty(data: any) {
       if (user && !data.agent) {
         // For Appwrite relationship many-to-one, store agent id
         data.agent = user.$id;
+        console.log('Creating property with agent ID:', user.$id);
       }
     } catch (e) {
       // ignore - create without agent
+      console.error('Could not get user for agent field:', e);
     }
 
     // Ensure required fields for the properties collection are present
@@ -353,12 +371,19 @@ export async function createProperty(data: any) {
       delete data.geolocation;
     }
 
-    // Facilities: if array, store as comma-separated string per schema
-    if (Array.isArray(data.facilities)) {
-      const normalisedFacilities = data.facilities
-        .map((f: string) => normaliseFacilityFilter(typeof f === 'string' ? f : ''))
-        .filter((f: string | null): f is string => !!f);
-      data.facilities = normalisedFacilities.join(',');
+    // Facilities: if configured as relationship, skip it during creation
+    // If you want facilities as a simple array, change the attribute type in Appwrite
+    if ('facilities' in data) {
+      delete data.facilities;
+      console.log('createProperty - skipping facilities (relationship field)');
+    }
+
+    // Remove reviews and gallery if they exist (these attributes/collections may have been deleted)
+    if ('reviews' in data) {
+      delete data.reviews;
+    }
+    if ('gallery' in data) {
+      delete data.gallery;
     }
 
     const doc = await databases.createDocument(
@@ -376,26 +401,42 @@ export async function createProperty(data: any) {
 
 export async function updateProperty(id: string, data: any) {
   try {
-    const geolocationValue = normaliseGeolocationPayload(data.geolocation);
-    if (geolocationValue) {
-      data.geolocation = geolocationValue;
-    } else if ('geolocation' in data) {
-      delete data.geolocation;
+    console.log('updateProperty - incoming data keys:', Object.keys(data));
+    
+    // Create a minimal payload with ONLY the fields we want to update
+    const updatePayload: any = {};
+    
+    // Only update non-relationship fields that are explicitly provided
+    const allowedFields = ['name', 'address', 'price', 'bedrooms', 'bathrooms', 'area', 'type', 'description', 'images', 'rating'];
+    
+    for (const key of allowedFields) {
+      if (key in data && data[key] !== undefined) {
+        updatePayload[key] = data[key];
+      }
     }
 
-    // Facilities: convert array to comma-separated string if provided
-    if (Array.isArray(data.facilities)) {
-      const normalisedFacilities = data.facilities
-        .map((f: string) => normaliseFacilityFilter(typeof f === 'string' ? f : ''))
-        .filter((f: string | null): f is string => !!f);
-      data.facilities = normalisedFacilities.join(',');
+    // Handle geolocation separately
+    if ('geolocation' in data) {
+      const geolocationValue = normaliseGeolocationPayload(data.geolocation);
+      if (geolocationValue) {
+        updatePayload.geolocation = geolocationValue;
+      }
     }
+
+    // Ensure numeric fields are numbers
+    if ('price' in updatePayload) updatePayload.price = Number(updatePayload.price);
+    if ('bedrooms' in updatePayload) updatePayload.bedrooms = Number(updatePayload.bedrooms);
+    if ('bathrooms' in updatePayload) updatePayload.bathrooms = Number(updatePayload.bathrooms);
+    if ('area' in updatePayload) updatePayload.area = Number(updatePayload.area);
+    if ('rating' in updatePayload) updatePayload.rating = Number(updatePayload.rating);
+
+    console.log('updateProperty - final payload:', JSON.stringify(updatePayload, null, 2));
 
     const doc = await databases.updateDocument(
       config.databaseId!,
       config.propertiesCollectionId!,
       id,
-      data
+      updatePayload
     );
     return { success: true, doc };
   } catch (error) {
@@ -492,14 +533,19 @@ export async function getMyProperties(params?: any) {
       uid = user?.$id;
     }
 
-    if (!uid) return [];
+    if (!uid) {
+      console.log('getMyProperties: No user ID found');
+      return [];
+    }
 
+    console.log('getMyProperties: Querying properties for agent ID:', uid);
     const result = await databases.listDocuments(
       config.databaseId!,
       config.propertiesCollectionId!,
       [Query.equal('agent', uid as any), Query.orderDesc('$createdAt')]
     );
 
+    console.log('getMyProperties: Found', result.documents.length, 'properties');
     return result.documents as unknown as PropertyDocument[];
   } catch (error) {
     console.error('Error fetching user properties:', error);
@@ -531,9 +577,83 @@ export async function updateUserPreferences(prefs: { phone?: string; bio?: strin
     };
     
     await account.updatePrefs(updatedPrefs);
+    
+    // Also create/update agent entry in agents collection
+    await ensureAgentExists(
+      currentUser.$id, 
+      currentUser.name, 
+      currentUser.email, 
+      prefs.photoURL || currentPrefs.photoURL,
+      prefs.phone || currentPrefs.phone
+    );
+    
     return { success: true };
   } catch (error) {
     console.error("Error updating preferences:", error);
+    return { success: false, error };
+  }
+}
+
+// Create or update agent entry in agents collection
+export async function ensureAgentExists(userId: string, name: string, email: string, avatarValue?: string, phone?: string) {
+  try {
+    // Convert avatar to string URL if it's not already
+    let avatarUrl: string;
+    
+    if (avatarValue && typeof avatarValue === 'string') {
+      // Check if it's already a valid URL
+      if (avatarValue.startsWith('http://') || avatarValue.startsWith('https://')) {
+        avatarUrl = avatarValue;
+      } else {
+        // If it's not a URL, generate one
+        avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&size=200`;
+      }
+    } else {
+      // Default avatar URL
+      avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&size=200`;
+    }
+    
+    // Check if agent already exists
+    const existingAgents = await databases.listDocuments(
+      config.databaseId!,
+      config.agentsCollectionId!,
+      [Query.equal('$id', userId)]
+    );
+
+    const agentData: any = {
+      name: name,
+      email: email,
+      avatar: avatarUrl
+    };
+    
+    // Add phone if provided
+    if (phone) {
+      agentData.phone = phone;
+    }
+
+    if (existingAgents.documents.length > 0) {
+      // Update existing agent
+      await databases.updateDocument(
+        config.databaseId!,
+        config.agentsCollectionId!,
+        userId,
+        agentData
+      );
+      console.log('Agent updated successfully');
+    } else {
+      // Create new agent with the user's ID
+      await databases.createDocument(
+        config.databaseId!,
+        config.agentsCollectionId!,
+        userId, // Use user ID as agent ID for easy relationship
+        agentData
+      );
+      console.log('Agent created successfully');
+    }
+    
+    return { success: true };
+  } catch (error) {
+    console.error("Error ensuring agent exists:", error);
     return { success: false, error };
   }
 }

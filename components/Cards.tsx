@@ -8,19 +8,23 @@ export interface PropertyDocument extends Models.Document {
   address: string;
   price: string;
   rating: number;
-  image: string;
+  image?: string; // Legacy support
+  images?: string[]; // New array field
 }
 interface Props {
   item: PropertyDocument;
   onPress?: () => void;
 }
 export const FeaturedCard = ({item,onPress }: Props) => {
+  // Get the first image from images array, fallback to legacy image field
+  const imageUrl = item.images?.[0] || item.image || 'https://via.placeholder.com/400';
+  
   return (
     <TouchableOpacity
       onPress={onPress}
       className="flex flex-col items-start w-60 h-80 relative"
     >
-      <Image source={{uri:item.image}} className="w-full h-full rounded-2xl" />
+      <Image source={{uri: imageUrl}} className="w-full h-full rounded-2xl" />
       <Image
         source={images.cardGradient}
         className="w-full h-full rounded-2xl absolute bottom-0"
@@ -53,6 +57,9 @@ export const FeaturedCard = ({item,onPress }: Props) => {
 };
 
 export const Card = ({item, onPress }: Props) => {
+  // Get the first image from images array, fallback to legacy image field
+  const imageUrl = item.images?.[0] || item.image || 'https://via.placeholder.com/400';
+  
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -70,7 +77,7 @@ export const Card = ({item, onPress }: Props) => {
          <Text className="text-xs font-rubik-bold text-primary-300 ml-1">{item.rating}</Text>
       </View>
 
-      <Image source={{uri:item.image}} className="w-full h-40 rounded-lg" resizeMode="cover" />
+      <Image source={{uri: imageUrl}} className="w-full h-40 rounded-lg" resizeMode="cover" />
 
       <View className="flex flex-col mt-3">
         <Text className="text-base font-rubik-bold text-black-300" numberOfLines={1}>{item.name}</Text>
