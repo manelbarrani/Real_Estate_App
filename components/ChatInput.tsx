@@ -3,25 +3,27 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import React, { useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    StyleSheet,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 interface ChatInputProps {
   conversationId: string;
   receiverId: string;
   onMessageSent?: () => void;
+  onMessageStart?: (messageText: string) => void;
   onTyping?: (isTyping: boolean) => void;
 }
 
-export const ChatInput: React.FC<ChatInputProps> = ({
+const ChatInput: React.FC<ChatInputProps> = ({
   conversationId,
   receiverId,
   onMessageSent,
+  onMessageStart,
   onTyping,
 }) => {
   const [message, setMessage] = useState('');
@@ -59,6 +61,11 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     // Stop typing indicator
     if (onTyping) {
       onTyping(false);
+    }
+    
+    // Afficher immédiatement le message (optimistic update)
+    if (onMessageStart) {
+      onMessageStart(messageText);
     }
 
     try {

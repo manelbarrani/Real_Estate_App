@@ -3,17 +3,17 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Image,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -131,9 +131,21 @@ const ChatScreen = () => {
                 const exists = prev.some(msg => msg.$id === payload.$id);
                 if (exists) return prev;
                 
-                return [...prev, payload].sort((a, b) => 
+                // Remove any temporary message with similar content
+                const filteredMessages = prev.filter(msg => 
+                  !(msg.$id.startsWith('temp_') && msg.content === payload.content && msg.senderId === payload.senderId)
+                );
+                
+                const newMessages = [...filteredMessages, payload].sort((a, b) => 
                   new Date(a.$createdAt).getTime() - new Date(b.$createdAt).getTime()
                 );
+                
+                // Auto-scroll to bottom for new messages
+                setTimeout(() => {
+                  flatListRef.current?.scrollToEnd({ animated: true });
+                }, 100);
+                
+                return newMessages;
               });
             } else if (response.events[0]?.includes('.update')) {
               console.log('🔄 Message updated:', payload);
@@ -156,15 +168,7 @@ const ChatScreen = () => {
     }
   };
 
-  const handleMessageSent = () => {
-    // Messages will be updated via realtime subscription
-    console.log('💬 Message sent, waiting for realtime update');
-    
-    // Scroll to bottom when new message is sent
-    setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
-    }, 100);
-  };
+
 
   const handleImagePress = (imageUrl: string) => {
     setSelectedImage(imageUrl);
@@ -216,6 +220,42 @@ const ChatScreen = () => {
   const handleTyping = (isTyping: boolean) => {
     // TODO: Implement typing indicator
     console.log('Typing:', isTyping);
+  };
+
+  const handleMessageSent = async () => {
+    // La subscription temps réel devrait déjà avoir ajouté le message
+    // Mais on force un scroll vers le bas au cas où
+    setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+    
+    // Optionnel : recharger si le message n'apparaît pas via subscription
+    setTimeout(async () => {
+      await loadMessages();
+    }, 1000);
+  };
+
+  const addMessageOptimistically = (messageText: string) => {
+    // Ajouter le message immédiatement à l'UI (optimistic update)
+    const tempMessage: MessageDocument = {
+      $id: 'temp_' + Date.now(),
+      $createdAt: new Date().toISOString(),
+      $updatedAt: new Date().toISOString(),
+      conversationId: conversationId,
+      senderId: user?.$id || '',
+      receiverId: otherUserId,
+      content: messageText,
+      messageType: 'text',
+      isRead: false,
+      isDelivered: false,
+      isEdited: false,
+      attachments: []
+    };
+    
+    setMessages(prev => [...prev, tempMessage]);
+    setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }, 50);
   };
 
   const renderMessage = ({ item }: { item: MessageDocument }) => (
@@ -316,6 +356,7 @@ const ChatScreen = () => {
           conversationId={conversationId}
           receiverId={otherUserId}
           onMessageSent={handleMessageSent}
+          onMessageStart={addMessageOptimistically}
           onTyping={handleTyping}
         />
       </KeyboardAvoidingView>
