@@ -5,6 +5,53 @@ import * as Linking from "expo-linking";
 import { openAuthSessionAsync } from "expo-web-browser";
 import { Platform } from "react-native";
 import { Account, Avatars, Client, Databases, ID, OAuthProvider, Query, Storage } from "react-native-appwrite";
+
+// Export Query pour l'utiliser dans d'autres fichiers
+export { Query };
+
+// Messaging Types
+export interface ConversationDocument {
+  $id: string;
+  $createdAt: string;
+  $updatedAt: string;
+  participantIds: string[];
+  propertyId?: string;
+  lastMessage: string;
+  lastMessageAt: string;
+  lastMessageSender: string;
+  isRead: boolean;
+  type: 'property_inquiry' | 'general' | 'support';
+  status: 'active' | 'archived' | 'blocked';
+}
+
+export interface MessageDocument {
+  $id: string;
+  $createdAt: string;
+  $updatedAt: string;
+  conversationId: string;
+  senderId: string;
+  receiverId: string;
+  content?: string;
+  messageType: 'text' | 'image' | 'property_card';
+  imageUrl?: string;
+  propertyData?: any;
+  isRead: boolean;
+  readAt?: string;
+  isDelivered: boolean;
+  deliveredAt?: string;
+  isEdited: boolean;
+  replyToMessageId?: string;
+}
+
+export interface TypingStatusDocument {
+  $id: string;
+  $createdAt: string;
+  $updatedAt: string;
+  conversationId: string;
+  userId: string;
+  isTyping: boolean;
+  lastTypingAt?: string;
+}
 export const config = {
   endpoint: process.env.EXPO_PUBLIC_APPWRITE_ENDPOINT,
   projectId: process.env.EXPO_PUBLIC_APPWRITE_PROJECT_ID,
@@ -15,6 +62,11 @@ export const config = {
   propertiesCollectionId: process.env.EXPO_PUBLIC_APPWRITE_PROPERTIES_COLLECTION_ID,
   profileImagesBucketId: process.env.EXPO_PUBLIC_APPWRITE_PROFILE_IMAGES_BUCKET_ID || "profile-images",
   favoritesCollectionId: process.env.EXPO_PUBLIC_APPWRITE_FAVORITES_COLLECTION_ID || "favorites",
+  // Messaging Configuration
+  conversationsCollectionId: process.env.EXPO_PUBLIC_APPWRITE_CONVERSATIONS_COLLECTION_ID || "conversations",
+  messagesCollectionId: process.env.EXPO_PUBLIC_APPWRITE_MESSAGES_COLLECTION_ID || "messages",
+  typingStatusCollectionId: process.env.EXPO_PUBLIC_APPWRITE_TYPING_STATUS_COLLECTION_ID || "typing_status",
+  chatImagesBucketId: process.env.EXPO_PUBLIC_APPWRITE_CHAT_IMAGES_BUCKET_ID || "chat-images",
 };
 
 // Determine correct platform identifier for Appwrite origin validation.
@@ -172,7 +224,9 @@ export async function login() {
         console.warn('login: session creation prohibited because a session is already active');
         return true;
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('Error:', e);
+    }
 
     console.error(error);
     return false;
@@ -872,5 +926,506 @@ export async function isFavorite(propertyId: string) {
   } catch (error) {
     console.error("Error checking favorite:", error);
     return false;
+  }
+}
+
+// ================================
+// MESSAGING FUNCTIONS
+// ================================
+
+// Create or get existing conversation between two users
+export async function createOrGetConversation(otherUserId: string, propertyId?: string): Promise<{ success: boolean; conversation?: ConversationDocument; error?: any }> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      throw new Error("User not authenticated");
+    }
+
+    // Check if conversation already exists between these two users
+    const existingConversations = await databases.listDocuments(
+      config.databaseId!,
+      config.conversationsCollectionId!,
+      [
+        Query.contains("participantIds", [user.$id]),
+        Query.contains("participantIds", [otherUserId]),
+        Query.limit(1),
+      ]
+    );
+
+    if (existingConversations.documents.length > 0) {
+      return {
+        success: true,
+        conversation: existingConversations.documents[0] as unknown as ConversationDocument,
+      };
+    }
+
+    // Create new conversation
+    const conversationData = {
+      participantIds: [user.$id, otherUserId],
+      propertyId: propertyId || undefined,
+      lastMessage: "",
+      lastMessageAt: new Date().toISOString(),
+      lastMessageSender: "",
+      isRead: false,
+      type: propertyId ? "property_inquiry" : "general",
+      status: "active",
+    };
+
+    const conversation = await databases.createDocument(
+      config.databaseId!,
+      config.conversationsCollectionId!,
+      ID.unique(),
+      conversationData
+    );
+
+    return {
+      success: true,
+      conversation: conversation as unknown as ConversationDocument,
+    };
+  } catch (error) {
+    console.error("Error creating/getting conversation:", error);
+    return { success: false, error };
+  }
+}
+
+// Mark conversation as read
+export async function markConversationAsRead(conversationId: string): Promise<void> {
+  try {
+    await databases.updateDocument(
+      config.databaseId!,
+      config.conversationsCollectionId!,
+      conversationId,
+      {
+        isRead: true
+      }
+    );
+  } catch (error) {
+    console.error("Error marking conversation as read:", error);
+  }
+}
+
+// Search agents by name
+export async function searchAgentsByName(query: string): Promise<any[]> {
+  try {
+    // Utiliser contains au lieu de search pour éviter l'erreur fulltext
+    const response = await databases.listDocuments(
+      config.databaseId!,
+      config.agentsCollectionId!,
+      [
+        Query.contains('name', query),
+        Query.limit(20)
+      ]
+    );
+    
+    // Filtrer côté client pour une recherche plus flexible
+    const filteredResults = response.documents.filter(agent => 
+      agent.name?.toLowerCase().includes(query.toLowerCase()) ||
+      agent.email?.toLowerCase().includes(query.toLowerCase()) ||
+      agent.agency?.toLowerCase().includes(query.toLowerCase())
+    );
+    
+    return filteredResults;
+  } catch (error) {
+    console.error("Error searching agents:", error);
+    // En cas d'erreur, essayer une recherche simple sans filtre
+    try {
+      const fallbackResponse = await databases.listDocuments(
+        config.databaseId!,
+        config.agentsCollectionId!,
+        [Query.limit(50)]
+      );
+      
+      // Filtrer côté client
+      return fallbackResponse.documents.filter(agent => 
+        agent.name?.toLowerCase().includes(query.toLowerCase())
+      );
+    } catch (fallbackError) {
+      console.error("Fallback search failed:", fallbackError);
+      return [];
+    }
+  }
+}
+
+// Create conversation from property post
+export async function createConversationFromProperty(propertyId: string, agentId: string): Promise<{success: boolean, conversationId?: string, error?: any}> {
+  try {
+    const currentUser = await getCurrentUser();
+    if (!currentUser) {
+      return { success: false, error: 'User not authenticated' };
+    }
+
+    // Check if conversation already exists
+    const existingConversations = await databases.listDocuments(
+      config.databaseId!,
+      config.conversationsCollectionId!,
+      [
+        Query.and([
+          Query.contains("participantIds", [currentUser.$id]),
+          Query.contains("participantIds", [agentId]),
+          Query.equal("propertyId", propertyId)
+        ])
+      ]
+    );
+
+    if (existingConversations.documents.length > 0) {
+      return { 
+        success: true, 
+        conversationId: existingConversations.documents[0].$id 
+      };
+    }
+
+    // Create new conversation
+    const conversation = await databases.createDocument(
+      config.databaseId!,
+      config.conversationsCollectionId!,
+      ID.unique(),
+      {
+        participantIds: [currentUser.$id, agentId],
+        propertyId: propertyId,
+        lastMessage: "Nouvelle conversation",
+        lastMessageAt: new Date().toISOString(),
+        lastMessageSender: currentUser.$id,
+        isRead: false,
+        type: "property_inquiry",
+        status: "active"
+      }
+    );
+
+    return { 
+      success: true, 
+      conversationId: conversation.$id 
+    };
+  } catch (error) {
+    console.error("Error creating conversation from property:", error);
+    return { success: false, error };
+  }
+}
+
+// Get all conversations for current user
+export async function getUserConversations(userId?: string): Promise<ConversationDocument[]> {
+  try {
+    let user;
+    if (userId) {
+      // Si un userId est fourni, l'utiliser directement
+      user = { $id: userId };
+    } else {
+      // Sinon récupérer l'utilisateur actuel
+      user = await getCurrentUser();
+      if (!user) {
+        return [];
+      }
+    }
+
+    const conversations = await databases.listDocuments(
+      config.databaseId!,
+      config.conversationsCollectionId!,
+      [
+        Query.contains("participantIds", [user.$id]),
+        Query.orderDesc("lastMessageAt"),
+      ]
+    );
+
+    return conversations.documents as unknown as ConversationDocument[];
+  } catch (error) {
+    console.error("Error getting user conversations:", error);
+    return [];
+  }
+}
+
+// Send a text message
+export async function sendMessage(conversationId: string, receiverId: string, content: string): Promise<{ success: boolean; message?: MessageDocument; error?: any }> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      throw new Error("User not authenticated");
+    }
+
+    // Create message
+    const messageData = {
+      conversationId,
+      senderId: user.$id,
+      receiverId,
+      content,
+      messageType: "text",
+      isRead: false,
+      isDelivered: false,
+      isEdited: false,
+    };
+
+    const message = await databases.createDocument(
+      config.databaseId!,
+      config.messagesCollectionId!,
+      ID.unique(),
+      messageData
+    );
+
+    // Update conversation with last message info
+    await databases.updateDocument(
+      config.databaseId!,
+      config.conversationsCollectionId!,
+      conversationId,
+      {
+        lastMessage: content.substring(0, 100),
+        lastMessageAt: new Date().toISOString(),
+        lastMessageSender: user.$id,
+        isRead: false,
+      }
+    );
+
+    return {
+      success: true,
+      message: message as unknown as MessageDocument,
+    };
+  } catch (error) {
+    console.error("Error sending message:", error);
+    return { success: false, error };
+  }
+}
+
+// Get messages for a conversation
+export async function getConversationMessages(conversationId: string, limit: number = 50): Promise<MessageDocument[]> {
+  try {
+    const messages = await databases.listDocuments(
+      config.databaseId!,
+      config.messagesCollectionId!,
+      [
+        Query.equal("conversationId", conversationId),
+        Query.orderDesc("$createdAt"),
+        Query.limit(limit),
+      ]
+    );
+
+    return messages.documents.reverse() as unknown as MessageDocument[];
+  } catch (error) {
+    console.error("Error getting conversation messages:", error);
+    return [];
+  }
+}
+
+// Mark message as read
+export async function markMessageAsRead(messageId: string): Promise<{ success: boolean; error?: any }> {
+  try {
+    await databases.updateDocument(
+      config.databaseId!,
+      config.messagesCollectionId!,
+      messageId,
+      {
+        isRead: true,
+        readAt: new Date().toISOString(),
+      }
+    );
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error marking message as read:", error);
+    return { success: false, error };
+  }
+}
+
+// Upload chat image
+export async function uploadChatImage(imageUri: string): Promise<{ success: boolean; fileUrl?: string; fileId?: string; error?: any }> {
+  try {
+    const filename = imageUri.split('/').pop() || `chat-${Date.now()}.jpg`;
+    const response = await fetch(imageUri);
+    const blob = await response.blob();
+    
+    const fileObject = {
+      name: filename,
+      type: blob.type || 'image/jpeg',
+      size: blob.size,
+      uri: imageUri,
+      slice: blob.slice?.bind(blob),
+      stream: blob.stream?.bind(blob),
+      arrayBuffer: blob.arrayBuffer?.bind(blob),
+    };
+
+    const uploadedFile = await storage.createFile(
+      config.chatImagesBucketId!,
+      ID.unique(),
+      fileObject as any
+    );
+
+    const fileUrl = `${config.endpoint}/storage/buckets/${config.chatImagesBucketId}/files/${uploadedFile.$id}/view?project=${config.projectId}`;
+
+    return {
+      success: true,
+      fileUrl,
+      fileId: uploadedFile.$id,
+    };
+  } catch (error) {
+    console.error("Error uploading chat image:", error);
+    return { success: false, error };
+  }
+}
+
+// Send image message
+export async function sendImageMessage(conversationId: string, receiverId: string, imageUri: string): Promise<{ success: boolean; message?: MessageDocument; error?: any }> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      throw new Error("User not authenticated");
+    }
+
+    // Upload image first
+    const uploadResult = await uploadChatImage(imageUri);
+    if (!uploadResult.success) {
+      throw new Error("Failed to upload image");
+    }
+
+    // Create image message
+    const messageData = {
+      conversationId,
+      senderId: user.$id,
+      receiverId,
+      content: "📷 Image",
+      messageType: "image",
+      imageUrl: uploadResult.fileUrl,
+      isRead: false,
+      isDelivered: false,
+      isEdited: false,
+    };
+
+    const message = await databases.createDocument(
+      config.databaseId!,
+      config.messagesCollectionId!,
+      ID.unique(),
+      messageData
+    );
+
+    // Update conversation
+    await databases.updateDocument(
+      config.databaseId!,
+      config.conversationsCollectionId!,
+      conversationId,
+      {
+        lastMessage: "📷 Image",
+        lastMessageAt: new Date().toISOString(),
+        lastMessageSender: user.$id,
+        isRead: false,
+      }
+    );
+
+    return {
+      success: true,
+      message: message as unknown as MessageDocument,
+    };
+  } catch (error) {
+    console.error("Error sending image message:", error);
+    return { success: false, error };
+  }
+}
+
+// Delete conversation
+export async function deleteConversation(conversationId: string): Promise<{ success: boolean; error?: any }> {
+  try {
+    // First delete all messages in the conversation
+    const messages = await databases.listDocuments(
+      config.databaseId!,
+      config.messagesCollectionId!,
+      [Query.equal("conversationId", conversationId)]
+    );
+
+    for (const message of messages.documents) {
+      await databases.deleteDocument(
+        config.databaseId!,
+        config.messagesCollectionId!,
+        message.$id
+      );
+    }
+
+    // Then delete the conversation
+    await databases.deleteDocument(
+      config.databaseId!,
+      config.conversationsCollectionId!,
+      conversationId
+    );
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error deleting conversation:", error);
+    return { success: false, error };
+  }
+}
+
+// Get all agents who have properties (excluding current user)
+export async function getAllAgents(): Promise<any[]> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return [];
+    }
+
+    // Get all properties first to find agents with properties
+    const properties = await databases.listDocuments(
+      config.databaseId!,
+      config.propertiesCollectionId!,
+      [Query.limit(1000)] // Get many properties to find all agents
+    );
+
+    // Get unique agent IDs from properties
+    const agentIds = [...new Set(properties.documents.map(prop => prop.agent).filter(Boolean))];
+    
+    if (agentIds.length === 0) {
+      return [];
+    }
+
+    // Get agent details for those who have properties
+    const agents = await databases.listDocuments(
+      config.databaseId!,
+      config.agentsCollectionId!,
+      [Query.equal("$id", agentIds)]
+    );
+
+    // Filter out current user and return with property count
+    return agents.documents
+      .filter(agent => agent.$id !== user.$id)
+      .map(agent => ({
+        ...agent,
+        propertyCount: properties.documents.filter(prop => prop.agent === agent.$id).length
+      }))
+      .sort((a, b) => b.propertyCount - a.propertyCount); // Sort by property count
+  } catch (error) {
+    console.error("Error getting agents:", error);
+    return [];
+  }
+}
+
+// Get agent data by ID
+export async function getAgentById(agentId: string): Promise<any | null> {
+  try {
+    const agent = await databases.getDocument(
+      config.databaseId!,
+      config.agentsCollectionId!,
+      agentId
+    );
+    return agent;
+  } catch (error) {
+    console.error("Error getting agent by ID:", error);
+    return null;
+  }
+}
+
+// Get unread message count for current user
+export async function getUnreadMessageCount(): Promise<number> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return 0;
+    }
+
+    const messages = await databases.listDocuments(
+      config.databaseId!,
+      config.messagesCollectionId!,
+      [
+        Query.equal("receiverId", user.$id),
+        Query.equal("isRead", false),
+        Query.limit(100), // Limit to avoid performance issues
+      ]
+    );
+
+    return messages.documents.length;
+  } catch (error) {
+    console.error("Error getting unread message count:", error);
+    return 0;
   }
 }

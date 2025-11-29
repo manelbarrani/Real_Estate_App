@@ -15,9 +15,36 @@ interface Props {
   item: PropertyDocument;
   onPress?: () => void;
 }
-export const FeaturedCard = ({item,onPress }: Props) => {
+export const FeaturedCard = ({ item, onPress }: Props) => {
   // Get the first image from images array, fallback to legacy image field
   const imageUrl = item.images?.[0] || item.image || 'https://via.placeholder.com/400';
+  
+  const handleSendMessage = async (property: PropertyDocument) => {
+    try {
+      if (!property.agent) {
+        Alert.alert('Erreur', 'Aucun agent associé à cette propriété');
+        return;
+      }
+
+      const result = await createConversationFromProperty(property.$id, property.agent);
+      
+      if (result.success && result.conversationId) {
+        router.push({
+          pathname: '/chat/[id]',
+          params: {
+            id: result.conversationId,
+            otherUserId: property.agent,
+            propertyId: property.$id
+          }
+        });
+      } else {
+        Alert.alert('Erreur', 'Impossible de créer la conversation');
+      }
+    } catch (error) {
+      console.error('Erreur lors de la création de conversation:', error);
+      Alert.alert('Erreur', 'Une erreur est survenue');
+    }
+  };
   
   return (
     <TouchableOpacity
@@ -60,6 +87,33 @@ export const Card = ({item, onPress }: Props) => {
   // Get the first image from images array, fallback to legacy image field
   const imageUrl = item.images?.[0] || item.image || 'https://via.placeholder.com/400';
   
+  const handleSendMessage = async (property: PropertyDocument) => {
+    try {
+      if (!property.agent) {
+        Alert.alert('Erreur', 'Aucun agent associé à cette propriété');
+        return;
+      }
+
+      const result = await createConversationFromProperty(property.$id, property.agent);
+      
+      if (result.success && result.conversationId) {
+        router.push({
+          pathname: '/chat/[id]',
+          params: {
+            id: result.conversationId,
+            otherUserId: property.agent,
+            propertyId: property.$id
+          }
+        });
+      } else {
+        Alert.alert('Erreur', 'Impossible de créer la conversation');
+      }
+    } catch (error) {
+      console.error('Erreur lors de la création de conversation:', error);
+      Alert.alert('Erreur', 'Une erreur est survenue');
+    }
+  };
+  
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -86,7 +140,15 @@ export const Card = ({item, onPress }: Props) => {
           <Text className="text-lg font-rubik-extrabold text-primary-300">
             ${typeof item.price === 'number' ? (item.price as number).toLocaleString() : item.price}
           </Text>
-          <FavoriteButton propertyId={item.$id} size={22} className="-mr-1" />
+          <View className="flex flex-row items-center gap-2">
+            <TouchableOpacity 
+              onPress={() => handleSendMessage(item)}
+              className="bg-primary-300 px-3 py-1.5 rounded-full"
+            >
+              <Text className="text-white text-xs font-rubik-medium">💬 Message</Text>
+            </TouchableOpacity>
+            <FavoriteButton propertyId={item.$id} size={22} className="-mr-1" />
+          </View>
         </View>
       </View>
     </TouchableOpacity>

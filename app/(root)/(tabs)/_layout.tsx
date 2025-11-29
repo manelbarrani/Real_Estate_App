@@ -1,21 +1,40 @@
 import icons from "@/constants/icons";
+import { useUnreadMessages } from "@/lib/useUnreadMessages";
 import { Tabs } from "expo-router";
 import { Image, Text, View } from "react-native";
 
 
-const TabIcon = ({ focused, icon, title }: { focused: boolean; icon: any; title: string }) => (
+const TabIcon = ({ focused, icon, title, badge }: { 
+  focused: boolean; 
+  icon: any; 
+  title: string; 
+  badge?: number;
+}) => (
     <View className="flex-1 mt-2 flex flex-col items-center">
-        <Image
-            source={icon}
-            resizeMode="contain"
-            className="size-7"
-            style={{ tintColor: focused ? "#0061FF" : "#748C94" }}
-        />
-        <Text className={`${focused ? "text-primary-300 font-rubik-medium" : "text-black-200 font-rubik"} text-xs w-full text-center mt-1`}>{title}</Text>
+        <View className="relative">
+            <Image
+                source={icon}
+                resizeMode="contain"
+                className="size-7"
+                style={{ tintColor: focused ? "#0061FF" : "#748C94" }}
+            />
+            {badge && badge > 0 && (
+                <View className="absolute -top-1 -right-1 bg-red-500 rounded-full min-w-[18px] h-[18px] items-center justify-center px-1">
+                    <Text className="text-white text-xs font-bold">
+                        {badge > 99 ? '99+' : String(badge || 0)}
+                    </Text>
+                </View>
+            )}
+        </View>
+        <Text className={`${focused ? "text-primary-300 font-rubik-medium" : "text-black-200 font-rubik"} text-xs w-full text-center mt-1`}>
+            {title || 'Tab'}
+        </Text>
     </View>
 );
 
 const TabsLayout = () => {
+    const { unreadCount } = useUnreadMessages();
+    
     return (
                     <Tabs
                 initialRouteName="index"
@@ -54,6 +73,20 @@ const TabsLayout = () => {
                         title: "Favorites",
                         tabBarIcon: ({ focused }) => (
                             <TabIcon icon={icons.heart} focused={focused} title="Favorites" />
+                        ),
+                    }}
+                />
+                <Tabs.Screen
+                    name="messages"
+                    options={{
+                        title: "Messages",
+                        tabBarIcon: ({ focused }) => (
+                            <TabIcon 
+                                icon={icons.chat} 
+                                focused={focused} 
+                                title="Messages" 
+                                badge={unreadCount}
+                            />
                         ),
                     }}
                 />

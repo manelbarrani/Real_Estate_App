@@ -1,17 +1,17 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Dimensions,
-    FlatList,
-    Image,
-    Linking,
-    Platform,
-    ScrollView,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  FlatList,
+  Image,
+  Linking,
+  Platform,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 import Comment from "@/components/Comment";
@@ -21,7 +21,8 @@ import { facilities } from "@/constants/data";
 import icons from "@/constants/icons";
 import images from "@/constants/images";
 
-import { deleteProperty, getCurrentUser, getPropertyById } from "@/lib/appwrite";
+import { createOrGetConversation, deleteProperty, getCurrentUser, getPropertyById } from "@/lib/appwrite";
+import { useGlobalContext } from "@/lib/global-provider";
 import { useAppwrite } from "@/lib/useAppwrite";
 
 const Property = () => {
@@ -38,6 +39,7 @@ const Property = () => {
   });
 
   const router = useRouter();
+  const { user } = useGlobalContext();
   const [isOwner, setIsOwner] = useState(false);
   const [agentData, setAgentData] = useState<any>(null);
 
@@ -106,6 +108,44 @@ const Property = () => {
       .catch((err) => console.error('Error opening phone dialer:', err));
   };
 
+  const handleStartChat = async () => {
+    if (!user) {
+      Alert.alert('Connexion requise', 'Vous devez être connecté pour envoyer un message');
+      return;
+    }
+
+    const agentId = agentData?.$id || property?.agent?.$id || property?.agent;
+    if (!agentId) {
+      Alert.alert('Erreur', 'Impossible de contacter l\'agent');
+      return;
+    }
+
+    if (agentId === user.$id) {
+      Alert.alert('Info', 'Vous ne pouvez pas vous envoyer un message à vous-même');
+      return;
+    }
+
+    try {
+      const result = await createOrGetConversation(agentId, property?.$id);
+      
+      if (result.success && result.conversation) {
+        router.push({
+          pathname: '/chat/[id]',
+          params: {
+            id: result.conversation.$id,
+            otherUserId: agentId,
+            propertyId: property?.$id,
+          },
+        });
+      } else {
+        Alert.alert('Erreur', 'Impossible de démarrer la conversation');
+      }
+    } catch (error) {
+      console.error('Error starting chat:', error);
+      Alert.alert('Erreur', 'Une erreur est survenue');
+    }
+  };
+
   if (loading) {
     return (
       <View className="flex-1 items-center justify-center bg-white">
@@ -154,7 +194,7 @@ const Property = () => {
               {/* Image indicator dots */}
               {allImages.length > 1 && (
                 <View className="absolute bottom-4 left-0 right-0 flex-row justify-center items-center z-50">
-                  {allImages.map((_, index) => (
+                  {allImages.map((_: any, index: number) => (
                     <View
                       key={index}
                       className={`h-2 rounded-full mx-1 ${
@@ -285,7 +325,7 @@ const Property = () => {
               </View>
 
               <View className="flex flex-row items-center gap-3">
-                <TouchableOpacity>
+                <TouchableOpacity onPress={handleStartChat}>
                   <Image source={icons.chat} className="size-7" />
                 </TouchableOpacity>
                 <TouchableOpacity onPress={handleCall} disabled={!agentData?.phone}>
