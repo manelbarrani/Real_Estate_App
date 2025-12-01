@@ -6,16 +6,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Image,
-    RefreshControl,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Image,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -105,7 +105,8 @@ const ChatListScreen = () => {
         `databases.${config.databaseId}.collections.${config.conversationsCollectionId}.documents`,
         (response: any) => {
           try {
-            console.log('📞 Conversation realtime event:', response);
+            // Only process if we have valid events
+            if (!response.events || !response.events[0]) return;
             
             const payload = response.payload as ConversationDocument;
             
@@ -115,7 +116,6 @@ const ChatListScreen = () => {
             }
             
             if (response.events[0]?.includes('.create')) {
-              console.log('➕ New conversation:', payload);
               setConversations(prev => {
                 const exists = prev.some(conv => conv.$id === payload.$id);
                 if (exists) return prev;
@@ -125,7 +125,6 @@ const ChatListScreen = () => {
                 );
               });
             } else if (response.events[0]?.includes('.update')) {
-              console.log('🔄 Conversation updated:', payload);
               setConversations(prev => 
                 prev.map(conv => 
                   conv.$id === payload.$id ? payload : conv
@@ -135,15 +134,15 @@ const ChatListScreen = () => {
               );
             }
           } catch (error) {
-            console.error('❌ Conversation subscription error:', error);
+            // Silently handle errors
           }
         }
       );
       
-      console.log('🔔 Subscribed to conversations');
       return subscription;
     } catch (error) {
-      console.error('Error subscribing to conversations:', error);
+      // Silently handle subscription errors
+      return null;
     }
   };
 
