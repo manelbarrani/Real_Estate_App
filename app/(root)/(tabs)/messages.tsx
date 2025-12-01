@@ -3,7 +3,7 @@ import { useAgents } from '@/lib/agents-provider';
 import { client, config, ConversationDocument, createOrGetConversation, deleteConversation, getAgentById, getUserConversations, markConversationAsRead, searchAgentsByName } from '@/lib/appwrite';
 import { useGlobalContext } from '@/lib/global-provider';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -21,6 +21,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 const ChatListScreen = () => {
   const { user } = useGlobalContext();
+
+  if (!user) {
+    return <Redirect href="/sign-in" />;
+  }
+
   const { getAgent, setAgent } = useAgents();
   const [conversations, setConversations] = useState<ConversationDocument[]>([]);
   const [loading, setLoading] = useState(true);

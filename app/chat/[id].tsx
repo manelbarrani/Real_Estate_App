@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -24,8 +24,13 @@ import { MessageDocument, client, config, getAgentById, getConversationMessages 
 import { useGlobalContext } from '@/lib/global-provider';
 
 const ChatScreen = () => {
-  const router = useRouter();
   const { user } = useGlobalContext();
+
+  if (!user) {
+    return <Redirect href="/sign-in" />;
+  }
+
+  const router = useRouter();
   const { getAgent, setAgent } = useAgents();
   const params = useLocalSearchParams();
   const flatListRef = useRef<FlatList>(null);

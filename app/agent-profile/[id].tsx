@@ -88,7 +88,19 @@ export default function AgentProfile() {
 
   const handleSendMessage = async () => {
     try {
-      if (!agent || !user) {
+      if (!user) {
+        Alert.alert(
+          'Login Required',
+          'Please sign in to message agents',
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => {} },
+            { text: 'Sign In', onPress: () => router.push('/sign-in') }
+          ]
+        );
+        return;
+      }
+
+      if (!agent) {
         Alert.alert('Erreur', 'Informations manquantes');
         return;
       }

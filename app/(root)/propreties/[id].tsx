@@ -64,7 +64,7 @@ const Property = () => {
 
   useEffect(() => {
     const loadUnavailable = async () => {
-      if (!property) return;
+      if (!property || !user) return; // Only load if user is authenticated
       try {
         const bookings = await getPropertyBookings(property.$id);
         const blocked: string[] = [];
@@ -85,7 +85,7 @@ const Property = () => {
 
         setUnavailableDates(Array.from(new Set(blocked)));
       } catch (e) {
-        console.error('Error loading property bookings:', e);
+        // Silently handle errors for unauthenticated users
       }
     };
 
@@ -586,7 +586,23 @@ const Property = () => {
             </Text>
           </View>
 
-          <TouchableOpacity onPress={() => setShowDatePicker(true)} className="flex-1 flex flex-row items-center justify-center bg-primary-300 py-3 rounded-full shadow-md shadow-zinc-400">
+          <TouchableOpacity 
+            onPress={() => {
+              if (!user) {
+                Alert.alert(
+                  'Login Required',
+                  'Please sign in to book this property',
+                  [
+                    { text: 'Cancel', style: 'cancel', onPress: () => {} },
+                    { text: 'Sign In', onPress: () => router.push('/sign-in') }
+                  ]
+                );
+                return;
+              }
+              setShowDatePicker(true);
+            }}
+            className="flex-1 flex flex-row items-center justify-center bg-primary-300 py-3 rounded-full shadow-md shadow-zinc-400"
+          >
             <Text className="text-white text-lg text-center font-rubik-bold">
               Book Now
             </Text>

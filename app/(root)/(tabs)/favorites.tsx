@@ -1,7 +1,8 @@
 import { Card } from "@/components/Cards";
 import NoResults from "@/components/NoResults";
 import { useFavorites } from "@/lib/favorites-provider";
-import { router } from "expo-router";
+import { useGlobalContext } from "@/lib/global-provider";
+import { Redirect, router } from "expo-router";
 import React from "react";
 import {
     ActivityIndicator,
@@ -13,7 +14,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const Favorites = () => {
+  const { user } = useGlobalContext();
   const { favorites, loading, refetch } = useFavorites();
+
+  if (!user) {
+    return <Redirect href="/sign-in" />;
+  }
   const [refreshing, setRefreshing] = React.useState(false);
 
   const onRefresh = async () => {

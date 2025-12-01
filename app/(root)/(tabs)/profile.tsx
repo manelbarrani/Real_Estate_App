@@ -2,7 +2,7 @@ import icons from '@/constants/icons';
 import { logout } from '@/lib/appwrite';
 import { useGlobalContext } from '@/lib/global-provider';
 import seed from '@/lib/seed';
-import { router } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import React from 'react';
 import {
     Alert,
@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { settings } from '../../../constants/data';
+
 interface SettingsItemProps {
     icon: ImageSourcePropType;
     title: string;
@@ -46,6 +47,10 @@ const SettingsItem = ({
 
 const Profile = () => {
     const { user, refetch } = useGlobalContext();
+
+    if (!user) {
+        return <Redirect href="/sign-in" />;
+    }
 
     const handleLogout = async () => {
         const result = await logout();

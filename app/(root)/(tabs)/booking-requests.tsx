@@ -5,7 +5,8 @@ import {
     getCurrentUser,
     updateBookingStatus,
 } from "@/lib/appwrite";
-import { useRouter } from "expo-router";
+import { useGlobalContext } from "@/lib/global-provider";
+import { Redirect, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
     ActivityIndicator,
@@ -22,6 +23,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function BookingRequests() {
+  const { user } = useGlobalContext();
+
+  if (!user) {
+    return <Redirect href="/sign-in" />;
+  }
+
   const router = useRouter();
   const [bookings, setBookings] = useState<BookingDocument[]>([]);
   const [loading, setLoading] = useState(true);
