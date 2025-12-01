@@ -96,7 +96,7 @@ const Profile = () => {
                             onPress={() => router.push({ pathname: '/(root)/(tabs)/bookings' } as any)}
                         />
                         <SettingsItem 
-                            icon={icons.receipt} 
+                            icon={icons.calendar} 
                             title="Booking Requests" 
                             onPress={() => router.push({ pathname: '/(root)/(tabs)/booking-requests' } as any)}
                         />

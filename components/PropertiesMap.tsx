@@ -11,7 +11,11 @@ interface Props {
 // It avoids native map SDKs and does not require any billing/API keys.
 const PropertiesMap = ({ properties }: Props) => {
   const markers = useMemo(() => {
-    if (!properties || properties.length === 0) return [];
+    console.log('🗺️ PropertiesMap: Processing properties:', properties);
+    if (!properties || properties.length === 0) {
+      console.log('❌ PropertiesMap: No properties to display');
+      return [];
+    }
 
     const parseCoordinate = (value: any): number | null => {
       if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -53,19 +57,25 @@ const PropertiesMap = ({ properties }: Props) => {
 
     return properties
       .map((p) => {
+        console.log(`🏠 Processing property: ${p.name}`);
+        console.log(`📍 Raw geolocation:`, p?.geolocation);
+        
         const geo = resolveGeolocation(p?.geolocation);
+        console.log(`🎯 Resolved geolocation:`, geo);
 
         let lat = geo.lat;
         let lng = geo.lng;
 
         if (lat === null || lng === null) {
+          console.log(`🔄 Trying fallback coordinates for ${p.name}`);
           const fallbackLat = parseCoordinate(p?.latitude);
           const fallbackLng = parseCoordinate(p?.longitude);
           lat = lat ?? fallbackLat;
           lng = lng ?? fallbackLng;
+          console.log(`🔄 Fallback result: lat=${lat}, lng=${lng}`);
         }
 
-        return {
+        const result = {
           id: p.$id,
           name: p.name,
           address: p.address,
@@ -73,6 +83,9 @@ const PropertiesMap = ({ properties }: Props) => {
           lat,
           lng,
         };
+        
+        console.log(`✅ Final marker for ${p.name}:`, result);
+        return result;
       })
       .filter((m) => m.lat !== null && m.lng !== null) as Array<{
         id: string;

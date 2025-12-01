@@ -112,10 +112,16 @@ export default function Explore() {
                       <Text className="text-xl font-rubik-bold text-black-300">
                         {properties?.length || 0} Properties
                       </Text>
-                      <TouchableOpacity onPress={() => setShowMap(s => !s)} className="flex-row items-center px-4 py-2.5 rounded-full bg-primary-300 shadow-sm">
-                        <Image source={showMap ? icons.home : icons.location} className="w-4 h-4 mr-2" tintColor="white" />
-                        <Text className="text-white font-rubik-medium text-sm">{showMap ? 'List View' : 'Map View'}</Text>
-                      </TouchableOpacity>
+                      <View className="flex-row space-x-2">
+                        <TouchableOpacity onPress={() => router.push('../map-view')} className="flex-row items-center px-3 py-2 rounded-full bg-blue-500 shadow-sm">
+                          <Image source={icons.location} className="w-4 h-4 mr-1" tintColor="white" />
+                          <Text className="text-white font-rubik-medium text-xs">Full Map</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => setShowMap(s => !s)} className="flex-row items-center px-3 py-2 rounded-full bg-primary-300 shadow-sm">
+                          <Image source={showMap ? icons.home : icons.location} className="w-4 h-4 mr-1" tintColor="white" />
+                          <Text className="text-white font-rubik-medium text-xs">{showMap ? 'List' : 'Map'}</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                     {showMap && <View className="mt-4"><PropertiesMap properties={properties || []} /></View>}
                 </View>

@@ -11,6 +11,9 @@ export interface PropertyDocument extends Models.Document {
   rating: number;
   image?: string; // Legacy support
   images?: string[]; // New array field
+  geolocation?: string; // JSON string of coordinates
+  bedrooms?: number;
+  bathrooms?: number;
 }
 
 interface Props {

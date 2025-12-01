@@ -50,7 +50,19 @@
             "./assets/fonts/Rubik-SemiBold.ttf"
           ]
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "This app needs access to your location to show nearby properties and provide directions.",
+          "locationWhenInUsePermission": "This app needs access to your location to show nearby properties and provide directions."
+        }
       ]
+    ],
+    "permissions": [
+      "ACCESS_COARSE_LOCATION",
+      "ACCESS_FINE_LOCATION",
+      "INTERNET"
     ],
     "experiments": {
       "typedRoutes": true,
