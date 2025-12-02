@@ -53,6 +53,51 @@ export interface TypingStatusDocument {
   lastTypingAt?: string;
 }
 
+// Notifications Types
+export type NotificationType = 
+  | 'message'
+  | 'booking_request'
+  | 'booking_confirmed'
+  | 'booking_rejected'
+  | 'booking_cancelled'
+  | 'payment_received'
+  | 'payment_refunded'
+  | 'payout_completed'
+  | 'review_received'
+  | 'property_favorite'
+  | 'system';
+
+export type NotificationCategory = 'messages' | 'bookings' | 'payments' | 'reviews' | 'system';
+export type NotificationPriority = 'low' | 'normal' | 'high' | 'urgent';
+
+export interface NotificationDocument extends Models.Document {
+  userId: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  data?: string; // JSON string containing additional data
+  isRead: boolean;
+  readAt?: string;
+  category: NotificationCategory;
+  priority: NotificationPriority;
+  actionUrl?: string;
+  imageUrl?: string;
+  expiresAt?: string;
+}
+
+export interface NotificationPreferencesDocument extends Models.Document {
+  userId: string;
+  pushEnabled: boolean;
+  emailEnabled: boolean;
+  messagesEnabled: boolean;
+  bookingsEnabled: boolean;
+  paymentsEnabled: boolean;
+  reviewsEnabled: boolean;
+  marketingEnabled: boolean;
+  soundEnabled: boolean;
+  vibrationEnabled: boolean;
+}
+
 // Booking & Payments Types
 export type BookingStatus = 'pending' | 'confirmed' | 'rejected' | 'cancelled' | 'completed';
 export type PaymentStatus = 'unpaid' | 'paid' | 'refunded' | 'partially_refunded';
@@ -158,6 +203,9 @@ export const config = {
   bookingsCollectionId: process.env.EXPO_PUBLIC_APPWRITE_BOOKINGS_COLLECTION_ID || "bookings",
   paymentsCollectionId: process.env.EXPO_PUBLIC_APPWRITE_PAYMENTS_COLLECTION_ID || "payments",
   payoutsCollectionId: process.env.EXPO_PUBLIC_APPWRITE_PAYOUTS_COLLECTION_ID || "payouts",
+  // Notifications Configuration
+  notificationsCollectionId: process.env.EXPO_PUBLIC_APPWRITE_NOTIFICATIONS_COLLECTION_ID || "notifications",
+  notificationPreferencesCollectionId: process.env.EXPO_PUBLIC_APPWRITE_NOTIFICATION_PREFERENCES_COLLECTION_ID || "notification_preferences",
 };
 
 // Determine correct platform identifier for Appwrite origin validation.
@@ -1486,7 +1534,8 @@ export async function getAllAgents(): Promise<any[]> {
     );
 
     // Get unique agent IDs from properties
-    const agentIds = [...new Set(properties.documents.map(prop => prop.agent).filter(Boolean))];
+    const agentIdsSet = new Set(properties.documents.map((prop: any) => prop.agent).filter(Boolean));
+    const agentIds = Array.from(agentIdsSet);
     
     if (agentIds.length === 0) {
       return [];
@@ -1501,12 +1550,12 @@ export async function getAllAgents(): Promise<any[]> {
 
     // Filter out current user and return with property count
     return agents.documents
-      .filter(agent => agent.$id !== user.$id)
-      .map(agent => ({
+      .filter((agent: any) => agent.$id !== user.$id)
+      .map((agent: any) => ({
         ...agent,
-        propertyCount: properties.documents.filter(prop => prop.agent === agent.$id).length
+        propertyCount: properties.documents.filter((prop: any) => prop.agent === agent.$id).length
       }))
-      .sort((a, b) => b.propertyCount - a.propertyCount); // Sort by property count
+      .sort((a: any, b: any) => b.propertyCount - a.propertyCount); // Sort by property count
   } catch (error) {
     console.error("Error getting agents:", error);
     return [];
@@ -2341,4 +2390,318 @@ export async function getPropertyRating(propertyId: string): Promise<{
     return { average: 0, count: 0 };
   }
 }
+
+// ============================================
+// NOTIFICATIONS FUNCTIONS
+// ============================================
+
+/**
+ * Create a notification for a user
+ */
+export async function createNotification(data: {
+  userId: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  category: NotificationCategory;
+  priority?: NotificationPriority;
+  actionUrl?: string;
+  imageUrl?: string;
+  data?: Record<string, any>;
+  expiresAt?: string;
+}): Promise<NotificationDocument> {
+  try {
+    const notificationData: any = {
+      userId: data.userId,
+      type: data.type,
+      title: data.title,
+      message: data.message,
+      category: data.category,
+      priority: data.priority || 'normal',
+      isRead: false,
+    };
+
+    if (data.actionUrl) notificationData.actionUrl = data.actionUrl;
+    if (data.imageUrl) notificationData.imageUrl = data.imageUrl;
+    if (data.data) notificationData.data = JSON.stringify(data.data);
+    if (data.expiresAt) notificationData.expiresAt = data.expiresAt;
+
+    const notification = await databases.createDocument<NotificationDocument>(
+      config.databaseId!,
+      config.notificationsCollectionId!,
+      ID.unique(),
+      notificationData
+    );
+
+    return notification;
+  } catch (error) {
+    console.error("Error creating notification:", error);
+    throw error;
+  }
+}
+
+/**
+ * Get notifications for a user
+ */
+export async function getUserNotifications(
+  userId: string,
+  options?: {
+    limit?: number;
+    offset?: number;
+    onlyUnread?: boolean;
+    category?: NotificationCategory;
+  }
+): Promise<{ documents: NotificationDocument[]; total: number }> {
+  try {
+    const queries = [
+      Query.equal("userId", userId),
+      Query.orderDesc("$createdAt"),
+    ];
+
+    if (options?.onlyUnread) {
+      queries.push(Query.equal("isRead", false));
+    }
+
+    if (options?.category) {
+      queries.push(Query.equal("category", options.category));
+    }
+
+    if (options?.limit) {
+      queries.push(Query.limit(options.limit));
+    }
+
+    if (options?.offset) {
+      queries.push(Query.offset(options.offset));
+    }
+
+    const response = await databases.listDocuments<NotificationDocument>(
+      config.databaseId!,
+      config.notificationsCollectionId!,
+      queries
+    );
+
+    return {
+      documents: response.documents,
+      total: response.total,
+    };
+  } catch (error) {
+    console.error("Error fetching notifications:", error);
+    return { documents: [], total: 0 };
+  }
+}
+
+/**
+ * Get unread notification count for a user
+ */
+export async function getUnreadNotificationCount(userId: string): Promise<number> {
+  try {
+    const response = await databases.listDocuments(
+      config.databaseId!,
+      config.notificationsCollectionId!,
+      [
+        Query.equal("userId", userId),
+        Query.equal("isRead", false),
+        Query.limit(1), // We only need the count
+      ]
+    );
+
+    return response.total;
+  } catch (error) {
+    console.error("Error fetching unread count:", error);
+    return 0;
+  }
+}
+
+/**
+ * Mark notification as read
+ */
+export async function markNotificationAsRead(notificationId: string): Promise<void> {
+  try {
+    await databases.updateDocument(
+      config.databaseId!,
+      config.notificationsCollectionId!,
+      notificationId,
+      {
+        isRead: true,
+        readAt: new Date().toISOString(),
+      }
+    );
+  } catch (error) {
+    console.error("Error marking notification as read:", error);
+    throw error;
+  }
+}
+
+/**
+ * Mark all notifications as read for a user
+ */
+export async function markAllNotificationsAsRead(userId: string): Promise<void> {
+  try {
+    const unreadNotifications = await databases.listDocuments<NotificationDocument>(
+      config.databaseId!,
+      config.notificationsCollectionId!,
+      [
+        Query.equal("userId", userId),
+        Query.equal("isRead", false),
+        Query.limit(100), // Process in batches
+      ]
+    );
+
+    const updatePromises = unreadNotifications.documents.map((notification) =>
+      databases.updateDocument(
+        config.databaseId!,
+        config.notificationsCollectionId!,
+        notification.$id,
+        {
+          isRead: true,
+          readAt: new Date().toISOString(),
+        }
+      )
+    );
+
+    await Promise.all(updatePromises);
+  } catch (error) {
+    console.error("Error marking all notifications as read:", error);
+    throw error;
+  }
+}
+
+/**
+ * Delete a notification
+ */
+export async function deleteNotification(notificationId: string): Promise<void> {
+  try {
+    await databases.deleteDocument(
+      config.databaseId!,
+      config.notificationsCollectionId!,
+      notificationId
+    );
+  } catch (error) {
+    console.error("Error deleting notification:", error);
+    throw error;
+  }
+}
+
+/**
+ * Delete all read notifications for a user
+ */
+export async function deleteReadNotifications(userId: string): Promise<void> {
+  try {
+    const readNotifications = await databases.listDocuments<NotificationDocument>(
+      config.databaseId!,
+      config.notificationsCollectionId!,
+      [
+        Query.equal("userId", userId),
+        Query.equal("isRead", true),
+        Query.limit(100),
+      ]
+    );
+
+    const deletePromises = readNotifications.documents.map((notification) =>
+      databases.deleteDocument(
+        config.databaseId!,
+        config.notificationsCollectionId!,
+        notification.$id
+      )
+    );
+
+    await Promise.all(deletePromises);
+  } catch (error) {
+    console.error("Error deleting read notifications:", error);
+    throw error;
+  }
+}
+
+/**
+ * Get or create notification preferences for a user
+ */
+export async function getNotificationPreferences(
+  userId: string
+): Promise<NotificationPreferencesDocument> {
+  try {
+    const response = await databases.listDocuments<NotificationPreferencesDocument>(
+      config.databaseId!,
+      config.notificationPreferencesCollectionId!,
+      [Query.equal("userId", userId)]
+    );
+
+    if (response.documents.length > 0) {
+      return response.documents[0];
+    }
+
+    // Create default preferences if none exist
+    const defaultPreferences = await databases.createDocument<NotificationPreferencesDocument>(
+      config.databaseId!,
+      config.notificationPreferencesCollectionId!,
+      ID.unique(),
+      {
+        userId,
+        pushEnabled: true,
+        emailEnabled: true,
+        messagesEnabled: true,
+        bookingsEnabled: true,
+        paymentsEnabled: true,
+        reviewsEnabled: true,
+        marketingEnabled: false,
+        soundEnabled: true,
+        vibrationEnabled: true,
+      }
+    );
+
+    return defaultPreferences;
+  } catch (error) {
+    console.error("Error fetching notification preferences:", error);
+    throw error;
+  }
+}
+
+/**
+ * Update notification preferences
+ */
+export async function updateNotificationPreferences(
+  preferencesId: string,
+  updates: Partial<NotificationPreferencesDocument>
+): Promise<NotificationPreferencesDocument> {
+  try {
+    const updated = await databases.updateDocument<NotificationPreferencesDocument>(
+      config.databaseId!,
+      config.notificationPreferencesCollectionId!,
+      preferencesId,
+      updates
+    );
+
+    return updated;
+  } catch (error) {
+    console.error("Error updating notification preferences:", error);
+    throw error;
+  }
+}
+
+/**
+ * Check if user has enabled notifications for a specific category
+ */
+export async function shouldSendNotification(
+  userId: string,
+  category: NotificationCategory
+): Promise<boolean> {
+  try {
+    const preferences = await getNotificationPreferences(userId);
+
+    // Map category to preference field
+    const categoryMap: Record<NotificationCategory, keyof NotificationPreferencesDocument> = {
+      messages: 'messagesEnabled',
+      bookings: 'bookingsEnabled',
+      payments: 'paymentsEnabled',
+      reviews: 'reviewsEnabled',
+      system: 'pushEnabled', // System notifications follow push settings
+    };
+
+    const preferenceKey = categoryMap[category];
+    return preferences[preferenceKey] as boolean;
+  } catch (error) {
+    console.error("Error checking notification preferences:", error);
+    return true; // Default to sending if we can't check preferences
+  }
+}
+
 

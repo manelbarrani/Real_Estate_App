@@ -1,4 +1,5 @@
 import icons from "@/constants/icons";
+import { useNotificationsContext } from "@/lib/notifications-provider";
 import { useUnreadMessages } from "@/lib/useUnreadMessages";
 import { Tabs } from "expo-router";
 import { Image, Text, View } from "react-native";
@@ -34,6 +35,7 @@ const TabIcon = ({ focused, icon, title, badge }: {
 
 const TabsLayout = () => {
     const { unreadCount } = useUnreadMessages();
+    const { unreadCount: notificationCount } = useNotificationsContext();
     
     return (
                     <Tabs
@@ -125,6 +127,18 @@ const TabsLayout = () => {
                 />
                 <Tabs.Screen
                     name="booking-requests"
+                    options={{
+                        href: null,
+                    }}
+                />
+                <Tabs.Screen
+                    name="notifications"
+                    options={{
+                        href: null,
+                    }}
+                />
+                <Tabs.Screen
+                    name="notification-preferences"
                     options={{
                         href: null,
                     }}

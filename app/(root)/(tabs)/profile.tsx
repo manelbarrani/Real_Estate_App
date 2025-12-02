@@ -1,9 +1,10 @@
+import { NotificationBadge } from '@/components/NotificationBadge';
 import icons from '@/constants/icons';
 import { logout } from '@/lib/appwrite';
 import { useGlobalContext } from '@/lib/global-provider';
+import { useNotificationsContext } from '@/lib/notifications-provider';
 import seed from '@/lib/seed';
 import { router } from 'expo-router';
-import React from 'react';
 import {
     Alert,
     Image,
@@ -47,6 +48,7 @@ const SettingsItem = ({
 
 const Profile = () => {
     const { user, refetch } = useGlobalContext();
+    const { unreadCount } = useNotificationsContext();
 
     if (!user) {
         return (
@@ -89,7 +91,13 @@ const Profile = () => {
             >
                 <View className="flex flex-row items-center justify-between mt-5">
                     <Text className="text-xl font-rubik-bold">Profile</Text>
-                    <Image source={icons.bell} className="size-5"/>
+                    <TouchableOpacity 
+                        onPress={() => router.push('/(root)/(tabs)/notifications' as any)}
+                        className="relative"
+                    >
+                        <Image source={icons.bell} className="size-5"/>
+                        <NotificationBadge count={unreadCount} size="small" />
+                    </TouchableOpacity>
                 </View>
                     <View className="flex-row justify-center flex mt-5" >
                         <View className="flex flex-col items-center relative mt-5" >
@@ -124,6 +132,11 @@ const Profile = () => {
                             icon={icons.calendar} 
                             title="Booking Requests" 
                             onPress={() => router.push({ pathname: '/(root)/(tabs)/booking-requests' } as any)}
+                        />
+                        <SettingsItem 
+                            icon={icons.bell} 
+                            title="Notifications" 
+                            onPress={() => router.push({ pathname: '/(root)/(tabs)/notifications' } as any)}
                         />
                         <SettingsItem
                             icon={icons.people}
