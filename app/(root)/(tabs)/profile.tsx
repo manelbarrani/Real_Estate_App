@@ -15,7 +15,6 @@ import {
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { settings } from '../../../constants/data';
 
 interface SettingsItemProps {
     icon: ImageSourcePropType;
@@ -133,11 +132,6 @@ const Profile = () => {
                             title="Booking Requests" 
                             onPress={() => router.push({ pathname: '/(root)/(tabs)/booking-requests' } as any)}
                         />
-                        <SettingsItem 
-                            icon={icons.bell} 
-                            title="Notifications" 
-                            onPress={() => router.push({ pathname: '/(root)/(tabs)/notifications' } as any)}
-                        />
                         <SettingsItem
                             icon={icons.people}
                             title="Seed Data (dev)"
@@ -157,9 +151,65 @@ const Profile = () => {
                         />
                     </View>
                                         <View className="flex flex-col mt-5 border-t pt-5 border-primary-200">
-                                            {settings.slice(2).map((item, index) => (
-                                                <SettingsItem key={index} {...item} />
-                                            ))}
+                                            <SettingsItem 
+                                                icon={icons.person} 
+                                                title="Profile" 
+                                                onPress={() => router.push('/(root)/(tabs)/edit-profile')}
+                                            />
+                                            <SettingsItem 
+                                                icon={icons.shield} 
+                                                title="Security" 
+                                                onPress={() => Alert.alert('Security', 'Security settings coming soon')}
+                                            />
+                                            <SettingsItem 
+                                                icon={icons.language} 
+                                                title="Language" 
+                                                onPress={() => {
+                                                    Alert.alert(
+                                                        'Choisir la langue / Choose Language',
+                                                        'Sélectionnez votre langue préférée / Select your preferred language',
+                                                        [
+                                                            {
+                                                                text: 'Français 🇫🇷',
+                                                                onPress: () => Alert.alert('Langue', 'Langue changée en Français')
+                                                            },
+                                                            {
+                                                                text: 'English 🇬🇧',
+                                                                onPress: () => Alert.alert('Language', 'Language changed to English')
+                                                            },
+                                                            {
+                                                                text: 'Annuler / Cancel',
+                                                                style: 'cancel'
+                                                            }
+                                                        ]
+                                                    );
+                                                }}
+                                            />
+                                            <SettingsItem 
+                                                icon={icons.info} 
+                                                title="Help Center" 
+                                                onPress={() => {
+                                                    Alert.alert(
+                                                        'Help Center',
+                                                        '📧 Email: support@realestate.com\n\n📞 Phone: +1 234 567 890\n\n🌐 Website: www.realestate.com/help\n\n⏰ Available: 24/7\n\nHow can we help you?\n\n• Property Inquiries\n• Booking Issues\n• Payment Support\n• Account Management\n• Technical Support',
+                                                        [
+                                                            {
+                                                                text: 'Contact Support',
+                                                                onPress: () => Alert.alert('Contact', 'Opening email client...')
+                                                            },
+                                                            {
+                                                                text: 'Close',
+                                                                style: 'cancel'
+                                                            }
+                                                        ]
+                                                    );
+                                                }}
+                                            />
+                                            <SettingsItem 
+                                                icon={icons.people} 
+                                                title="Invite Friends" 
+                                                onPress={() => Alert.alert('Invite Friends', 'Share: Download our app and get exclusive deals!')}
+                                            />
                                         </View>
                                         <View className="flex flex-col mt-5 border-t pt-5 border-primary-200">
                         <SettingsItem

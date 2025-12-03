@@ -9,9 +9,9 @@ import { useGlobalContext } from "@/lib/global-provider";
 import { useNotificationsContext } from "@/lib/notifications-provider";
 import { useAppwrite } from "@/lib/useAppwrite";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { ActivityIndicator, Image, Text, TouchableOpacity, View } from "react-native";
-import { FlatList } from "react-native-gesture-handler";
+import { FlatList, GestureHandlerRootView, PanGestureHandler, State } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
 //ScrollView
 //FlatList (for list of items)
@@ -20,6 +20,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 export default function Index() {
   const { user} = useGlobalContext();
   const { unreadCount } = useNotificationsContext();
+  const filtersRef = useRef<{ openSidebar: () => void }>(null);
   const params= useLocalSearchParams<{
     query?: string;
     filter?: string;
@@ -68,10 +69,27 @@ export default function Index() {
     });
   }, [params.filter, params.query, params.minPrice, params.maxPrice, params.minBeds, params.bathrooms, params.facilities, params.sort]);
 
+  const handleGestureStateChange = (event: any) => {
+    const { nativeEvent } = event;
+    // Detect swipe to right when gesture ends
+    if (nativeEvent.state === State.END) {
+      if (nativeEvent.translationX > 100 && nativeEvent.velocityX > 0) {
+        console.log('Swipe detected! Opening sidebar...');
+        filtersRef.current?.openSidebar();
+      }
+    }
+  };
+
   return (
-    <SafeAreaView className="bg-white h-full">
-     
-      <FlatList
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <PanGestureHandler
+        onHandlerStateChange={handleGestureStateChange}
+        activeOffsetX={10}
+      >
+        <View style={{ flex: 1 }}>
+          <SafeAreaView className="bg-white h-full">
+           
+            <FlatList
         data= {properties} 
           renderItem={({item}) =><Card item={item as unknown as PropertyDocument} onPress={()=> handlerCardPress(item.$id)}/>}
           keyExtractor={(item) => item.$id}
@@ -117,7 +135,7 @@ export default function Index() {
           <View className="my-5">
             <View className="flex flex-row items-center justify-between">
               <Text className="text-xl font-rubik-bold text-black-300">Featured</Text>
-              <TouchableOpacity>
+              <TouchableOpacity onPress={() => router.push('/(root)/(tabs)/explore')}>
                 <Text className="text-base font-rubik-bold text-primary-300">See All</Text>
               </TouchableOpacity>
             </View>
@@ -139,23 +157,30 @@ export default function Index() {
           </View>
           <View className="flex flex-row items-center justify-between">
             <Text className="text-xl font-rubik-bold text-black-300">Our Recommendation</Text>
-            <TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/(root)/(tabs)/explore')}>
               <Text className="text-base font-rubik-bold text-primary-300">See All</Text>
             </TouchableOpacity>
           </View>
-      <Filters showCategories initial={{
-        filter: typeof params.filter === 'string' ? params.filter : undefined,
-        minPrice: params.minPrice ? Number(params.minPrice) : undefined,
-        maxPrice: params.maxPrice ? Number(params.maxPrice) : undefined,
-        minBeds: params.minBeds ? Number(params.minBeds) : undefined,
-        bathrooms: params.bathrooms ? Number(params.bathrooms) : undefined,
-        facilities: params.facilities ? String(params.facilities).split(',') : [],
-        sort: (params.sort as any) || 'newest',
-      }} />
+      <Filters 
+        ref={filtersRef}
+        showCategories 
+        initial={{
+          filter: typeof params.filter === 'string' ? params.filter : undefined,
+          minPrice: params.minPrice ? Number(params.minPrice) : undefined,
+          maxPrice: params.maxPrice ? Number(params.maxPrice) : undefined,
+          minBeds: params.minBeds ? Number(params.minBeds) : undefined,
+          bathrooms: params.bathrooms ? Number(params.bathrooms) : undefined,
+          facilities: params.facilities ? String(params.facilities).split(',') : [],
+          sort: (params.sort as any) || 'newest',
+        }} 
+      />
 
       </View>}
       
-      />   
-    </SafeAreaView>
+            />   
+          </SafeAreaView>
+        </View>
+      </PanGestureHandler>
+    </GestureHandlerRootView>
   );
 }

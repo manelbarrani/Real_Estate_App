@@ -1,10 +1,13 @@
 import { categories, facilities as facilityOptions } from '@/constants/data';
-import icons from '@/constants/icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
-import { Image, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react';
+import { Animated, Dimensions, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 type SortKey = 'newest' | 'price_high' | 'price_low' | 'rating';
+
+export interface FiltersRef {
+  openSidebar: () => void;
+}
 
 type FiltersProps = {
   initial?: {
@@ -28,7 +31,7 @@ type FiltersProps = {
   showCategories?: boolean;
 };
 
-const Filters = ({ initial, onApply, showCategories = true }: FiltersProps) => {
+const Filters = forwardRef<FiltersRef, FiltersProps>(({ initial, onApply, showCategories = true }, ref) => {
   const params = useLocalSearchParams();
   const filter = typeof params.filter === 'string' ? params.filter : undefined;
   const router = useRouter();
@@ -59,6 +62,7 @@ const Filters = ({ initial, onApply, showCategories = true }: FiltersProps) => {
     initial?.facilities ?? (params.facilities ? (params.facilities as string).split(',') : [])
   );
   const [sort, setSort] = useState<SortKey>((initial?.sort || (params.sort as SortKey)) || 'newest');
+  const [slideAnim] = useState(new Animated.Value(-Dimensions.get('window').width * 0.8));
 
   // Keep local state in sync if `initial` changes
   useEffect(() => {
@@ -119,125 +123,287 @@ const Filters = ({ initial, onApply, showCategories = true }: FiltersProps) => {
     });
   };
 
+  const openSidebar = () => {
+    setExpanded(true);
+    Animated.timing(slideAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const closeSidebar = () => {
+    Animated.timing(slideAnim, {
+      toValue: -Dimensions.get('window').width * 0.8,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => setExpanded(false));
+  };
+
+  useImperativeHandle(ref, () => ({
+    openSidebar,
+  }));
+
   return (
     <>
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      className="mt-3 mb-2"
-    >
-      {showCategories && categories.map((item) => (
-        <TouchableOpacity
-          key={item.category}
+    {showCategories && (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        className="mt-3 mb-2"
+      >
+        {categories.map((item) => (
+          <TouchableOpacity
+            key={item.category}
             onPress={() => handleCategory(item.category)}
             className={`flex flex-col items-start mr-4 px-4 py-2 rounded-full ${selectedCategory === item.category ? 'bg-primary-300' : 'bg-black-100 border border-primary-200'}`}
-        >
-          <Text
-            className={`text-sm ${selectedCategory === item.category ? 'text-white font-rubik-bold mt-0.5' : 'text-black-300 font-rubik'}`}
           >
-            {item.title}
-          </Text>
-        </TouchableOpacity>
-      ))}
+            <Text
+              className={`text-sm ${selectedCategory === item.category ? 'text-white font-rubik-bold mt-0.5' : 'text-black-300 font-rubik'}`}
+            >
+              {item.title}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    )}
 
-      <TouchableOpacity
-        onPress={() => setExpanded((v) => !v)}
-        className="flex flex-row items-center mr-4 px-4 py-2 rounded-full bg-primary-300 shadow-sm"
-      >
-        <Image source={icons.filter} className="w-4 h-4 mr-1.5" tintColor="white" />
-        <Text className="text-sm text-white font-rubik-bold">Filters</Text>
-      </TouchableOpacity>
-    </ScrollView>
-    {expanded && (
-      <View className="px-4 py-4 bg-white border-t border-primary-100 rounded-b-lg shadow-sm">
-        <Text className="font-rubik-bold text-black-300 mb-2 text-sm">Price Range</Text>
-        <View className="flex flex-row gap-3 mb-4">
-          <TextInput
-            value={minPrice}
-            onChangeText={setMinPrice}
-            placeholder="Min price"
-            keyboardType="numeric"
-            placeholderTextColor="#999"
-            className="flex-1 border border-primary-100 bg-white px-4 py-3 rounded-lg font-rubik"
-          />
-          <TextInput
-            value={maxPrice}
-            onChangeText={setMaxPrice}
-            placeholder="Max price"
-            keyboardType="numeric"
-            placeholderTextColor="#999"
-            className="flex-1 border border-primary-100 bg-white px-4 py-3 rounded-lg font-rubik"
-          />
+    <Modal
+      visible={expanded}
+      transparent
+      animationType="none"
+      onRequestClose={closeSidebar}
+    >
+      <View style={{ flex: 1, flexDirection: 'row' }}>
+        <Animated.View 
+          style={{ 
+            transform: [{ translateX: slideAnim }],
+            width: Dimensions.get('window').width * 0.85,
+            height: '100%',
+            backgroundColor: 'white',
+            shadowColor: '#000',
+            shadowOffset: { width: 2, height: 0 },
+            shadowOpacity: 0.3,
+            shadowRadius: 10,
+            elevation: 10,
+          }}
+        >
+          {/* Header */}
+          <View style={{ paddingHorizontal: 20, paddingTop: 50, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#191D31' }}>Filtres</Text>
+              <TouchableOpacity onPress={closeSidebar} style={{ padding: 8 }}>
+                <Text style={{ fontSize: 28, color: '#191D31' }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Scrollable Content */}
+          <ScrollView 
+            style={{ flex: 1 }} 
+            contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 100 }}
+            showsVerticalScrollIndicator={true}
+          >
+        <View style={{ marginBottom: 24 }}>
+          <Text style={{ fontSize: 16, fontWeight: '600', color: '#191D31', marginBottom: 12 }}>Prix</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+            <Text style={{ fontSize: 14, color: '#666' }}>${minPrice || '0'}</Text>
+            <Text style={{ fontSize: 14, color: '#666' }}>${maxPrice || '10000'}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <TextInput
+              value={minPrice}
+              onChangeText={(text) => {
+                const num = text.replace(/[^0-9]/g, '');
+                setMinPrice(num);
+              }}
+              placeholder="Min"
+              keyboardType="numeric"
+              placeholderTextColor="#999"
+              style={{ 
+                flex: 1, 
+                borderWidth: 1, 
+                borderColor: '#E5E7EB', 
+                backgroundColor: 'white', 
+                paddingHorizontal: 16, 
+                paddingVertical: 12, 
+                borderRadius: 8, 
+                textAlign: 'center',
+                fontSize: 14
+              }}
+            />
+            <Text style={{ alignSelf: 'center', color: '#191D31', fontWeight: '500' }}>-</Text>
+            <TextInput
+              value={maxPrice}
+              onChangeText={(text) => {
+                const num = text.replace(/[^0-9]/g, '');
+                setMaxPrice(num);
+              }}
+              placeholder="Max"
+              keyboardType="numeric"
+              placeholderTextColor="#999"
+              style={{ 
+                flex: 1, 
+                borderWidth: 1, 
+                borderColor: '#E5E7EB', 
+                backgroundColor: 'white', 
+                paddingHorizontal: 16, 
+                paddingVertical: 12, 
+                borderRadius: 8, 
+                textAlign: 'center',
+                fontSize: 14
+              }}
+            />
+          </View>
         </View>
 
-        <Text className="font-rubik-bold text-black-300 mb-2 text-sm">Bedrooms & Bathrooms</Text>
-        <View className="flex flex-row gap-3 mb-4">
-          <TextInput
-            value={minBeds}
-            onChangeText={setMinBeds}
-            placeholder="Min beds"
-            keyboardType="numeric"
-            placeholderTextColor="#999"
-            className="flex-1 border border-primary-100 bg-white px-4 py-3 rounded-lg font-rubik"
-          />
-          <TextInput
-            value={bathrooms}
-            onChangeText={setBathrooms}
-            placeholder="Bathrooms"
-            keyboardType="numeric"
-            placeholderTextColor="#999"
-            className="flex-1 border border-primary-100 bg-white px-4 py-3 rounded-lg font-rubik"
-          />
+        <View style={{ marginBottom: 24 }}>
+          <Text style={{ fontSize: 16, fontWeight: '600', color: '#191D31', marginBottom: 12 }}>Chambres & Salles de bain</Text>
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <TextInput
+              value={minBeds}
+              onChangeText={setMinBeds}
+              placeholder="Min chambres"
+              keyboardType="numeric"
+              placeholderTextColor="#999"
+              style={{ 
+                flex: 1, 
+                borderWidth: 1, 
+                borderColor: '#E5E7EB', 
+                backgroundColor: 'white', 
+                paddingHorizontal: 16, 
+                paddingVertical: 12, 
+                borderRadius: 8,
+                fontSize: 14
+              }}
+            />
+            <TextInput
+              value={bathrooms}
+              onChangeText={setBathrooms}
+              placeholder="Salles de bain"
+              keyboardType="numeric"
+              placeholderTextColor="#999"
+              style={{ 
+                flex: 1, 
+                borderWidth: 1, 
+                borderColor: '#E5E7EB', 
+                backgroundColor: 'white', 
+                paddingHorizontal: 16, 
+                paddingVertical: 12, 
+                borderRadius: 8,
+                fontSize: 14
+              }}
+            />
+          </View>
         </View>
 
-        <View className="mb-4">
-          <Text className="font-rubik-bold text-black-300 mb-2 text-sm">Facilities</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <View style={{ marginBottom: 24 }}>
+          <Text style={{ fontSize: 16, fontWeight: '600', color: '#191D31', marginBottom: 12 }}>Équipements</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {facilityOptions.map((f) => (
               <TouchableOpacity
                 key={f.title}
                 onPress={() => toggleFacility(f.title)}
-                className={`px-3 py-2 mr-3 rounded-full ${selectedFacilities.includes(f.title) ? 'bg-primary-300' : 'bg-black-100 border border-primary-200'}`}
+                style={{
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  borderRadius: 20,
+                  backgroundColor: selectedFacilities.includes(f.title) ? '#0061FF' : '#F5F5F5',
+                  borderWidth: selectedFacilities.includes(f.title) ? 0 : 1,
+                  borderColor: '#E5E7EB',
+                }}
               >
-                <Text className={`${selectedFacilities.includes(f.title) ? 'text-white' : 'text-black-300'}`}>{f.title}</Text>
+                <Text style={{ 
+                  color: selectedFacilities.includes(f.title) ? 'white' : '#191D31',
+                  fontSize: 13
+                }}>{f.title}</Text>
               </TouchableOpacity>
             ))}
-          </ScrollView>
+          </View>
         </View>
 
-        <View className="mb-4">
-          <Text className="font-rubik-bold text-black-300 mb-2 text-sm">Sort By</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View className="flex flex-row gap-2">
-              {(['newest','price_high','price_low','rating'] as SortKey[]).map((s) => {
-                const labels: Record<string, string> = {
-                  newest: 'Newest',
-                  price_high: 'Price: High',
-                  price_low: 'Price: Low',
-                  rating: 'Rating'
-                };
-                return (
-                  <TouchableOpacity key={s} onPress={() => setSort(s as SortKey)} className={`px-4 py-2 rounded-full ${sort===s ? 'bg-primary-300' : 'bg-black-100 border border-primary-200'}`}>
-                    <Text className={`text-sm font-rubik ${sort===s? 'text-white' : 'text-black-300'}`}>{labels[s]}</Text>
-                  </TouchableOpacity>
-                );
-              })}
+          </ScrollView>
+
+          {/* Fixed Bottom Buttons */}
+          <View style={{ 
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            paddingHorizontal: 20, 
+            paddingVertical: 16, 
+            borderTopWidth: 1, 
+            borderTopColor: '#E5E7EB',
+            backgroundColor: 'white',
+            flexDirection: 'row',
+            gap: 12
+          }}>
+              <TouchableOpacity 
+                onPress={() => { 
+                  setMinPrice(''); 
+                  setMaxPrice(''); 
+                  setMinBeds(''); 
+                  setBathrooms(''); 
+                  setSelectedFacilities([]); 
+                  setSort('newest'); 
+                  safeSetParams({ 
+                    minPrice: undefined, 
+                    maxPrice: undefined, 
+                    minBeds: undefined, 
+                    bathrooms: undefined, 
+                    facilities: undefined, 
+                    sort: undefined 
+                  }); 
+                  closeSidebar(); 
+                }} 
+                style={{
+                  flex: 1,
+                  paddingVertical: 16,
+                  borderRadius: 12,
+                  backgroundColor: 'white',
+                  borderWidth: 2,
+                  borderColor: '#0061FF',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              > 
+                <Text style={{ fontWeight: '700', color: '#0061FF', fontSize: 15 }}>Réinitialiser</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                onPress={() => { 
+                  applyAdvancedFilters(); 
+                  closeSidebar(); 
+                }} 
+                style={{
+                  flex: 1,
+                  paddingVertical: 16,
+                  borderRadius: 12,
+                  backgroundColor: '#0061FF',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  shadowColor: '#0061FF',
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 8,
+                  elevation: 8
+                }}
+              >
+                <Text style={{ color: 'white', fontWeight: '700', fontSize: 15 }}>Appliquer</Text>
+              </TouchableOpacity>
             </View>
-          </ScrollView>
-        </View>
-
-        <View className="flex flex-row justify-end gap-3 pt-2">
-          <TouchableOpacity onPress={() => { setMinPrice(''); setMaxPrice(''); setMinBeds(''); setBathrooms(''); setSelectedFacilities([]); setSort('newest'); safeSetParams({ minPrice: undefined, maxPrice: undefined, minBeds: undefined, bathrooms: undefined, facilities: undefined, sort: undefined }); setExpanded(false); }} className="px-5 py-3 rounded-lg bg-white border border-primary-200"> 
-            <Text className="font-rubik-medium text-black-300">Reset</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={applyAdvancedFilters} className="px-6 py-3 rounded-lg bg-primary-300 shadow-sm">
-            <Text className="text-white font-rubik-bold">Apply Filters</Text>
-          </TouchableOpacity>
-        </View>
+        </Animated.View>
+        
+        <TouchableOpacity 
+          activeOpacity={1} 
+          onPress={closeSidebar}
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' }}
+        />
       </View>
-    )}
+    </Modal>
     </>
   );
-};
+});
+
+Filters.displayName = 'Filters';
 
 export default Filters;

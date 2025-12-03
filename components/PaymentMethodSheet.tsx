@@ -1,14 +1,14 @@
 import { useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    ScrollView,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 export type PaymentMethod = "card" | "bank_transfer" | "cash";
@@ -119,12 +119,12 @@ export function PaymentMethodSheet({
 
           <ScrollView className="max-h-[320px]" keyboardShouldPersistTaps="handled">
             {methods.map((method) => {
-              const data = PAYMENT_METHODS[method];
+              const data = PAYMENT_METHODS[method as PaymentMethod];
               return (
                 <TouchableOpacity
                   key={method}
                   activeOpacity={0.9}
-                  onPress={() => setSelectedMethod(method)}
+                  onPress={() => setSelectedMethod(method as PaymentMethod)}
                   className={`mb-3 border rounded-2xl p-4 ${selectedMethod === method ? "border-primary-300 bg-primary-50" : "border-gray-200"}`}
                 >
                   <View className="flex-row items-center justify-between">
@@ -159,7 +159,11 @@ export function PaymentMethodSheet({
                   placeholder="Card number"
                   keyboardType="number-pad"
                   value={card.number}
-                  onChangeText={(value) => setCard((prev) => ({ ...prev, number: value.replace(/[^0-9 ]/g, "") }))}
+                  onChangeText={(value) => {
+                    const cleaned = value.replace(/[^0-9]/g, "");
+                    const formatted = cleaned.match(/.{1,4}/g)?.join(" ") || cleaned;
+                    setCard((prev) => ({ ...prev, number: formatted }));
+                  }}
                   className="bg-gray-100 rounded-xl px-4 py-3 mb-2 font-rubik"
                   maxLength={19}
                 />
@@ -168,7 +172,14 @@ export function PaymentMethodSheet({
                     placeholder="MM/YY"
                     keyboardType="number-pad"
                     value={card.expiry}
-                    onChangeText={(value) => setCard((prev) => ({ ...prev, expiry: value.replace(/[^0-9/]/g, "") }))}
+                    onChangeText={(value) => {
+                      const cleaned = value.replace(/[^0-9]/g, "");
+                      let formatted = cleaned;
+                      if (cleaned.length >= 2) {
+                        formatted = cleaned.slice(0, 2) + "/" + cleaned.slice(2, 4);
+                      }
+                      setCard((prev) => ({ ...prev, expiry: formatted }));
+                    }}
                     className="bg-gray-100 rounded-xl px-4 py-3 flex-1 font-rubik"
                     maxLength={5}
                   />
